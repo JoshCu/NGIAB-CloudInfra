@@ -1,4 +1,4 @@
-FROM rockylinux:9.2 as rocky-base
+FROM rockylinux:9.2 as t-route
 RUN yum install -y epel-release 
 RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi
 
