@@ -1,11 +1,10 @@
-# This file is an updated version of the docker file in the ngen repo
-# https://github.com/NOAA-OWP/ngen/blob/master/docker/CENTOS_NGEN_RUN.dockerfile
+# Makes use of multiple stages to speed up the build
 
 FROM rockylinux:9.2 as all_stage_shared_deps
 RUN yum update -y \
     && yum install -y bzip2 git
 
-
+# Install ngen dependencies
 FROM all_stage_shared_deps as ngen_deps
 RUN yum update -y \
     && yum install -y dnf-plugins-core \
@@ -25,26 +24,96 @@ RUN curl -L -O https://boostorg.jfrog.io/artifactory/main/release/1.72.0/source/
 FROM all_stage_shared_deps as ngen_clone
 RUN git clone https://github.com/NOAA-OWP/ngen.git --single-branch /ngen/
 
-FROM ngen_deps as ngen-final
+
+FROM ngen_deps as build_prep
 ARG BOOST_ROOT="/boost_1_72_0"
+
 COPY --from=boost_download ${BOOST_ROOT} ${BOOST_ROOT}
 COPY --from=ngen_clone /ngen/ /ngen/
 
-
 ENV BOOST_ROOT=${BOOST_ROOT}
-
 ENV CXX=/usr/bin/g++
-
 
 WORKDIR /ngen
 
 RUN git submodule update --init --recursive -- test/googletest
 RUN git submodule update --init --recursive -- extern/pybind11
 
-RUN cmake -DNGEN_WITH_NETCDF:BOOL=OFF \
-    -DNGEN_WITH_SQLITE:BOOL=OFF \
-    -B /ngen -S .
+ARG BUILD_CMD="pwd && cmake -B \$MODULE/cmake_build -DCMAKE_BUILD_TYPE=release -S \$MODULE \
+    && cmake --build \$MODULE/cmake_build -j \$(nproc)"
+# Build submodules in parallel docker stages & parallel cmake
+FROM build_prep as build_external_fortran
+ENV MODULE = "iso_c_fortran_bmi"
+RUN ${BUILD_CMD}
+ENV MODULE = "noah-owp-modular"
+RUN ${BUILD_CMD}
+FROM build_prep as build_external_cfe
+ENV MODULE = "cfe"
+RUN ${BUILD_CMD}
+FROM build_prep as build_external_evapotranspiration
+ENV MODULE = "evapotranspiration/evapotranspiration"
+RUN ${BUILD_CMD}
+FROM build_prep as build_external_topmodel
+ENV MODULE = "topmodel"
+RUN ${BUILD_CMD}
+FROM build_prep as build_external_sloth
+ENV MODULE = "sloth"
+RUN ${BUILD_CMD}
+#FROM build_prep as build_external_tests
+#ENV MODULE = "test_bmi_cpp"
+#RUN ${BUILD_CMD}
+#ENV MODULE = "test_bmi_fortran"
+#RUN ${BUILD_CMD}
+FROM build_prep as install_external_python_modules
+RUN python3 -m pip install -r extern/test_bmi_py/requirements.txt
 
+FROM install_external_python_modules as copy_external_modules
+COPY --from=local/t-route:latest /t-route/wheels /tmp/t-route-wheels
+COPY --from=local/t-route:latest /t-route/requirements.txt /tmp/t-route-requirements.txt
+COPY --from=build_external_fortran /ngen/extern/iso_c_fortran_bmi /ngen/external/iso_c_fortran_bmi
+COPY --from=build_external_fortran /ngen/extern/noah-owp-modular /ngen/external/noah-owp-modular
+COPY --from=build_external_cfe /ngen/extern/cfe /ngen/external/cfe
+COPY --from=build_external_evapotranspiration /ngen/extern/evapotranspiration/evapotranspiration /ngen/external/evapotranspiration/evapotranspiration
+COPY --from=build_external_topmodel /ngen/extern/topmodel /ngen/external/topmodel
+COPY --from=build_external_sloth /ngen/extern/sloth /ngen/external/sloth
+#COPY --from=build_external_tests /ngen/extern/test_bmi_cpp /ngen/external/test_bmi_cpp
+#COPY --from=build_external_tests /ngen/extern/test_bmi_fortran /ngen/external/test_bmi_fortran
+
+
+FROM copy_external_modules as ngen_build_prep
+COPY ngen_cmake_args.txt /tmp/
+RUN NGEN_BUILD_ARGS=$(cat /tmp/ngen_cmake_args.txt)
+
+FROM ngen_build_prep as ngen_build_serial
+RUN cmake -DNGEN_WITH_SQLITE:BOOL=OFF -DMPI_ACTIVE:BOOL=OFF $NGEN_BUILD_ARGS -B /ngen -S .
+
+FROM ngen_build_prep as ngen_build_parallel
+RUN cmake -DNGEN_WITH_SQLITE:BOOL=OFF -DMPI_ACTIVE:BOOL=ON $NGEN_BUILD_ARGS -B /ngen -S .
+
+
+FROM ngen_build_serial as ngen_build_ngen
 RUN cmake --build . --target ngen -- -j$(nproc)
 
+FROM ngen_build_serial as ngen_build_all
+RUN cmake --build . --target all -- -j$(nproc)
+
+FROM copy_external_modules as ngen_final
+#COPY --from=ngen_build_ngen /ngen/ /ngen/
+COPY --from=ngen_build_all /ngen/ /ngen/
+
+WORKDIR /ngen
 CMD ./ngen data/catchment_data.geojson "" data/nexus_data.geojson "" data/example_realization_config.json
+
+FROM ngen_final as build_tests
+ENV MODULE = "test_bmi_cpp"
+RUN ${BUILD_CMD}
+ENV MODULE = "test_bmi_fortran"
+RUN ${BUILD_CMD}
+
+FROM build_tests as serial_tests
+RUN cmake --build . --target test -j$(nproc)  
+
+FROM build_tests as parallel_tests
+RUN pirun -n 2 cmake_build_parallel/test/test_remote_nexus
+RUN pirun -n 3 cmake_build_parallel/test/test_remote_nexus
+RUN pirun -n 4 cmake_build_parallel/test/test_remote_nexus
