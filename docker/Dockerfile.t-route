@@ -23,7 +23,33 @@ RUN ./compiler.sh no-e
 # add troute required modules
 RUN python -m pip install pyarrow deprecated geopandas
 
+RUN python -m pip freeze > requirements.txt
+
+RUN python -m pip install wheel
+# used by setup.py, needs fixing in t-route to use a python command
+RUN yum install -y which 
+
+ENV FC=gfortran 
+ENV NETCDF=/usr/include
+
+
+FROM t-route as network_wheel
+WORKDIR "/t-route/src/troute-network"
+RUN python setup.py --use-cython bdist_wheel
+
+FROM t-route as routing_wheel
+WORKDIR "/t-route/src/troute-routing"
+RUN python setup.py --use-cython bdist_wheel
+
+FROM t-route as nwm_wheel
+WORKDIR "/t-route/src/troute-nwm"
+RUN python setup.py bdist_wheel
+
+FROM t-route
+COPY --from=network_wheel /t-route/src/troute-network/dist/*.whl /t-route/wheels
+COPY --from=routing_wheel /t-route/src/troute-routing/dist/*.whl /t-route/wheels
+COPY --from=nwm_wheel /t-route/src/troute-nwm/dist/*.whl /t-route/wheels
+
 # increase max open files soft limit
 RUN ulimit -n 10000
 ENTRYPOINT ["/opt/venv/bin/python", "-m", "nwm_routing"]
-RUN pwd
