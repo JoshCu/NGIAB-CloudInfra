@@ -1,4 +1,4 @@
-FROM rockylinux:9.2 as t-route
+FROM rockylinux:9.2 as t-route_build
 RUN yum install -y epel-release 
 RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi
 
@@ -17,7 +17,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN python -m pip install -r requirements.txt
 # pin version number 3.0.3 deprecated something troute uses
-RUN python -m pip install cython==3.0.2 
+RUN python -m pip install cython==0.29.36
 RUN ./compiler.sh no-e
 
 # add troute required modules
@@ -31,25 +31,28 @@ RUN yum install -y which
 
 ENV FC=gfortran 
 ENV NETCDF=/usr/include
+RUN ulimit -n 10000
 
 
-FROM t-route as network_wheel
+FROM t-route_build as network_wheel
 WORKDIR "/t-route/src/troute-network"
 RUN python setup.py --use-cython bdist_wheel
 
-FROM t-route as routing_wheel
+FROM t-route_build as routing_wheel
 WORKDIR "/t-route/src/troute-routing"
 RUN python setup.py --use-cython bdist_wheel
 
-FROM t-route as nwm_wheel
+FROM t-route_build as nwm_wheel
 WORKDIR "/t-route/src/troute-nwm"
 RUN python setup.py bdist_wheel
 
-FROM t-route
+
+FROM t-route_build as t-route_standalone
+# increase max open files soft limit
+ENTRYPOINT ["/opt/venv/bin/python", "-m", "nwm_routing"]
+
+
+FROM t-route_build as t-route_wheel
 COPY --from=network_wheel /t-route/src/troute-network/dist/*.whl /t-route/wheels
 COPY --from=routing_wheel /t-route/src/troute-routing/dist/*.whl /t-route/wheels
 COPY --from=nwm_wheel /t-route/src/troute-nwm/dist/*.whl /t-route/wheels
-
-# increase max open files soft limit
-RUN ulimit -n 10000
-ENTRYPOINT ["/opt/venv/bin/python", "-m", "nwm_routing"]

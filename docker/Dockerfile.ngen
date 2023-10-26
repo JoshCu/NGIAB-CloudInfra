@@ -1,6 +1,7 @@
 # Makes use of multiple stages to speed up the build
 
-FROM rockylinux:9.2 as all_stage_shared_deps
+FROM local/t-route_wheel as all_stage_shared_deps
+WORKDIR "/"
 RUN yum update -y \
     && yum install -y bzip2 git
 
@@ -10,28 +11,21 @@ RUN yum update -y \
     && yum install -y dnf-plugins-core \
     && yum -y install epel-release \
     && yum repolist \
-    && yum install -y tar gcc-c++ gcc make cmake python3 python3-devel python3-numpy udunits2-devel \
+    && yum install -y tar gcc-c++ gcc make cmake udunits2-devel boost-devel \ 
     && dnf clean all \
     && rm -rf /var/cache/yum
+#yum install python3 python3-devel python3-numpy
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install numpy pandas pyyaml bmipy
 
-
-FROM all_stage_shared_deps as boost_download
-RUN curl -L -O https://boostorg.jfrog.io/artifactory/main/release/1.72.0/source/boost_1_72_0.tar.bz2 \
-    && tar -xjf boost_1_72_0.tar.bz2 \
-    && rm boost_1_72_0.tar.bz2
-
+#RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi netcdf-cxx netcdf-cxx-devel mpich
 
 FROM all_stage_shared_deps as ngen_clone
 RUN git clone https://github.com/NOAA-OWP/ngen.git --single-branch /ngen/
 
 
 FROM ngen_deps as build_prep
-ARG BOOST_ROOT="/boost_1_72_0"
-
-COPY --from=boost_download ${BOOST_ROOT} ${BOOST_ROOT}
 COPY --from=ngen_clone /ngen/ /ngen/
-
-ENV BOOST_ROOT=${BOOST_ROOT}
 ENV CXX=/usr/bin/g++
 
 WORKDIR /ngen
@@ -59,25 +53,20 @@ RUN ${BUILD_CMD}
 FROM build_prep as build_external_sloth
 ENV MODULE = "sloth"
 RUN ${BUILD_CMD}
-#FROM build_prep as build_external_tests
-#ENV MODULE = "test_bmi_cpp"
-#RUN ${BUILD_CMD}
-#ENV MODULE = "test_bmi_fortran"
-#RUN ${BUILD_CMD}
+
+
 FROM build_prep as install_external_python_modules
 RUN python3 -m pip install -r extern/test_bmi_py/requirements.txt
 
 FROM install_external_python_modules as copy_external_modules
 COPY --from=local/t-route:latest /t-route/wheels /tmp/t-route-wheels
-COPY --from=local/t-route:latest /t-route/requirements.txt /tmp/t-route-requirements.txt
+#COPY --from=local/t-route:latest /t-route/requirements.txt /tmp/t-route-requirements.txt
 COPY --from=build_external_fortran /ngen/extern/iso_c_fortran_bmi /ngen/external/iso_c_fortran_bmi
 COPY --from=build_external_fortran /ngen/extern/noah-owp-modular /ngen/external/noah-owp-modular
 COPY --from=build_external_cfe /ngen/extern/cfe /ngen/external/cfe
 COPY --from=build_external_evapotranspiration /ngen/extern/evapotranspiration/evapotranspiration /ngen/external/evapotranspiration/evapotranspiration
 COPY --from=build_external_topmodel /ngen/extern/topmodel /ngen/external/topmodel
 COPY --from=build_external_sloth /ngen/extern/sloth /ngen/external/sloth
-#COPY --from=build_external_tests /ngen/extern/test_bmi_cpp /ngen/external/test_bmi_cpp
-#COPY --from=build_external_tests /ngen/extern/test_bmi_fortran /ngen/external/test_bmi_fortran
 
 
 FROM copy_external_modules as ngen_build_prep
@@ -97,7 +86,7 @@ RUN cmake --build . --target ngen -- -j$(nproc)
 FROM ngen_build_serial as ngen_build_all
 RUN cmake --build . --target all -- -j$(nproc)
 
-FROM copy_external_modules as ngen_final
+FROM ngen_build_all as ngen_final
 #COPY --from=ngen_build_ngen /ngen/ /ngen/
 COPY --from=ngen_build_all /ngen/ /ngen/
 
@@ -114,6 +103,6 @@ FROM build_tests as serial_tests
 RUN cmake --build . --target test -j$(nproc)  
 
 FROM build_tests as parallel_tests
-RUN pirun -n 2 cmake_build_parallel/test/test_remote_nexus
-RUN pirun -n 3 cmake_build_parallel/test/test_remote_nexus
-RUN pirun -n 4 cmake_build_parallel/test/test_remote_nexus
+RUN mpirun -n 2 cmake_build_parallel/test/test_remote_nexus
+RUN mpirun -n 3 cmake_build_parallel/test/test_remote_nexus
+RUN mpirun -n 4 cmake_build_parallel/test/test_remote_nexus
