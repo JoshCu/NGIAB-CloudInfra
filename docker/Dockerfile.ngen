@@ -11,14 +11,13 @@ RUN yum update -y \
     && yum install -y dnf-plugins-core \
     && yum -y install epel-release \
     && yum repolist \
-    && yum install -y tar gcc-c++ gcc make cmake udunits2-devel boost-devel \ 
+    && yum install -y tar gcc-c++ gcc make cmake udunits2-devel boost-devel mpich \ 
     && dnf clean all \
     && rm -rf /var/cache/yum
 #yum install python3 python3-devel python3-numpy
-RUN python3 -m pip install --upgrade pip \
-    && python3 -m pip install numpy pandas pyyaml bmipy
+RUN python3 -m pip install numpy pandas pyyaml bmipy
 
-#RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi netcdf-cxx netcdf-cxx-devel mpich
+#RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-fortran-openmpi netcdf-fortran-openmpi-devel netcdf-openmpi netcdf-openmpi-devel  netcdf-cxx netcdf-cxx-devel
 
 FROM all_stage_shared_deps as ngen_clone
 RUN git clone https://github.com/NOAA-OWP/ngen.git --single-branch /ngen/
@@ -31,45 +30,21 @@ ENV CXX=/usr/bin/g++
 WORKDIR /ngen
 
 RUN git submodule update --init --recursive -- test/googletest
-RUN git submodule update --init --recursive -- extern/pybind11
+RUN git submodule update --init --recursive -- extern/*
 
-ARG BUILD_CMD="pwd && cmake -B \$MODULE/cmake_build -DCMAKE_BUILD_TYPE=release -S \$MODULE \
-    && cmake --build \$MODULE/cmake_build -j \$(nproc)"
-# Build submodules in parallel docker stages & parallel cmake
-FROM build_prep as build_external_fortran
-ENV MODULE = "iso_c_fortran_bmi"
-RUN ${BUILD_CMD}
-ENV MODULE = "noah-owp-modular"
-RUN ${BUILD_CMD}
-FROM build_prep as build_external_cfe
-ENV MODULE = "cfe"
-RUN ${BUILD_CMD}
-FROM build_prep as build_external_evapotranspiration
-ENV MODULE = "evapotranspiration/evapotranspiration"
-RUN ${BUILD_CMD}
-FROM build_prep as build_external_topmodel
-ENV MODULE = "topmodel"
-RUN ${BUILD_CMD}
-FROM build_prep as build_external_sloth
-ENV MODULE = "sloth"
-RUN ${BUILD_CMD}
+FROM build_prep as build_external_modules
+COPY install_external_modules.sh .
+RUN chmod +x ./install_external_modules.sh && \
+    ./install_external_modules.sh
+RUN cmake -DnetCDF_MOD_PATH=/usr/include/openmpi-x86_64/ -B extern/noah-owp-modular/cmake_build -S extern/noah-owp-modular && \
+cmake --build extern/noah-owp-modular/cmake_build --target surfacebmi -- -j $(nproc)
 
 
 FROM build_prep as install_external_python_modules
 RUN python3 -m pip install -r extern/test_bmi_py/requirements.txt
 
-FROM install_external_python_modules as copy_external_modules
-COPY --from=local/t-route:latest /t-route/wheels /tmp/t-route-wheels
-#COPY --from=local/t-route:latest /t-route/requirements.txt /tmp/t-route-requirements.txt
-COPY --from=build_external_fortran /ngen/extern/iso_c_fortran_bmi /ngen/external/iso_c_fortran_bmi
-COPY --from=build_external_fortran /ngen/extern/noah-owp-modular /ngen/external/noah-owp-modular
-COPY --from=build_external_cfe /ngen/extern/cfe /ngen/external/cfe
-COPY --from=build_external_evapotranspiration /ngen/extern/evapotranspiration/evapotranspiration /ngen/external/evapotranspiration/evapotranspiration
-COPY --from=build_external_topmodel /ngen/extern/topmodel /ngen/external/topmodel
-COPY --from=build_external_sloth /ngen/extern/sloth /ngen/external/sloth
-
-
-FROM copy_external_modules as ngen_build_prep
+FROM install_external_python_modules as ngen_build_prep
+COPY --from=build_external_modules /ngen/extern/ /ngen/external/
 COPY ngen_cmake_args.txt /tmp/
 RUN NGEN_BUILD_ARGS=$(cat /tmp/ngen_cmake_args.txt)
 
@@ -77,32 +52,36 @@ FROM ngen_build_prep as ngen_build_serial
 RUN cmake -DNGEN_WITH_SQLITE:BOOL=OFF -DMPI_ACTIVE:BOOL=OFF $NGEN_BUILD_ARGS -B /ngen -S .
 
 FROM ngen_build_prep as ngen_build_parallel
+ENV PATH=$PATH:/usr/lib/openmpi/bin
 RUN cmake -DNGEN_WITH_SQLITE:BOOL=OFF -DMPI_ACTIVE:BOOL=ON $NGEN_BUILD_ARGS -B /ngen -S .
 
 
-FROM ngen_build_serial as ngen_build_ngen
-RUN cmake --build . --target ngen -- -j$(nproc)
+# FROM ngen_build_serial as ngen_build_ngen
+# RUN cmake --build . --target ngen -- -j$(nproc)
 
-FROM ngen_build_serial as ngen_build_all
+FROM ngen_build_serial as ngen_build_all_serial
 RUN cmake --build . --target all -- -j$(nproc)
 
+FROM ngen_build_parallel as ngen_build_all_parallel
+RUN cmake --build . --target all -- -j$(nproc)
+
+FROM ngen_build_all_serial as serial_tests
+COPY install_tests.sh .
+RUN chmod +x ./install_tests.sh && \
+    ./install_tests.sh
+RUN cmake --build . --target test -j$(nproc)  
+
+FROM ngen_build_all_parallel as parallel_tests
+COPY install_tests.sh .
+RUN chmod +x ./install_tests.sh && \
+    ./install_tests.sh
+RUN mpirun -n 2 test/test_remote_nexus
+RUN mpirun -n 3 test/test_remote_nexus
+RUN mpirun -n 4 test/test_remote_nexus
+
+
 FROM ngen_build_all as ngen_final
-#COPY --from=ngen_build_ngen /ngen/ /ngen/
-COPY --from=ngen_build_all /ngen/ /ngen/
+
 
 WORKDIR /ngen
 CMD ./ngen data/catchment_data.geojson "" data/nexus_data.geojson "" data/example_realization_config.json
-
-FROM ngen_final as build_tests
-ENV MODULE = "test_bmi_cpp"
-RUN ${BUILD_CMD}
-ENV MODULE = "test_bmi_fortran"
-RUN ${BUILD_CMD}
-
-FROM build_tests as serial_tests
-RUN cmake --build . --target test -j$(nproc)  
-
-FROM build_tests as parallel_tests
-RUN mpirun -n 2 cmake_build_parallel/test/test_remote_nexus
-RUN mpirun -n 3 cmake_build_parallel/test/test_remote_nexus
-RUN mpirun -n 4 cmake_build_parallel/test/test_remote_nexus
