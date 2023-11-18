@@ -83,7 +83,7 @@ cleanup_folder() {
     echo "Files found: $file_count"
 
     if [ "$file_count" -gt 0 ]; then
-        echo -e "${UYellow}Cleanup Process: This step will delete matching files in $folder_name: $folder_path${Color_Off}"
+        echo -e "${UYellow}Cleanup Process: matching files ($file_types) in $folder_name: $folder_path${Color_Off}"
         echo -e "Select an option (type a number): "
         choose_option
     else
@@ -152,7 +152,7 @@ else
 fi 
 
 # Model run options
-PS3="Select an option (type a number): "
+echo -e "${UYellow}Select an option (type a number): ${Color_Off}" -i 1
 options=("Run NextGen Model using docker" "Exit")
 select option in "${options[@]}"; do
     case $option in

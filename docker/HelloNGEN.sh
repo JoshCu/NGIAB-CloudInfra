@@ -95,9 +95,9 @@ read -r redirect_choice
 # Execute the command
 if [[ "$redirect_choice" == [Yy]* ]]; then
     echo -e "${GREEN}Redirecting output to /dev/null.${RESET}"
-    $run_command > /dev/null 2>&1
+    time $run_command > /dev/null 2>&1
 else
-    $run_command
+    time $run_command
 fi
 command_status=$?
 
