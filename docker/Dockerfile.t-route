@@ -43,6 +43,10 @@ FROM t-route_build as nwm_wheel
 WORKDIR "/t-route/src/troute-nwm"
 RUN python setup.py bdist_wheel
 
+FROM t-route_build as config_wheel
+WORKDIR "/t-route/src/troute-config"
+COPY troute-config-setup /t-route/src/troute-config/setup.py
+RUN python setup.py bdist_wheel
 
 FROM t-route_build as t-route_standalone
 ENTRYPOINT ["/opt/venv/bin/python", "-m", "nwm_routing"]
@@ -52,3 +56,4 @@ FROM t-route_build as t-route_wheel
 COPY --from=network_wheel /t-route/src/troute-network/dist/*.whl /t-route/wheels/
 COPY --from=routing_wheel /t-route/src/troute-routing/dist/*.whl /t-route/wheels/
 COPY --from=nwm_wheel /t-route/src/troute-nwm/dist/*.whl /t-route/wheels/
+COPY --from=config_wheel /t-route/src/troute-config/dist/*.whl /t-route/wheels/
