@@ -1,11 +1,4 @@
 #!/bin/bash
-workdir="${1:-/ngen}"
-cd "${workdir}" || { echo -e "\e[31mFailed to change directory to ${workdir}\e[0m"; exit 1; }
-set -e
-echo -e "\e[36mWorking directory is:\e[0m"
-pwd
-echo -e "\n"
-
 # ANSI color codes
 RED='\e[31m'
 GREEN='\e[32m'
@@ -14,6 +7,15 @@ BLUE='\e[34m'
 MAGENTA='\e[35m'
 CYAN='\e[36m'
 RESET='\e[0m'
+
+workdir="${1:-/ngen}"
+cd "${workdir}" || { echo -e "${RED}Failed to change directory to ${workdir}${RESET}"; exit 1; }
+set -e
+echo -e "${CYAN}Working directory is:${RESET}"
+pwd
+echo -e "\n"
+
+
 
 # Function to automatically select file if only one is found
 auto_select_file() {
@@ -36,18 +38,18 @@ selected_nexus=$(auto_select_file "$HYDRO_FABRIC_NEXUS")
 selected_realization=$(auto_select_file "$NGEN_REALIZATIONS")
 
 # Displaying found files
-echo -e "${BLUE}\e[4mFound these Catchment files:\e[0m${RESET}" && echo "$HYDRO_FABRIC_CATCHMENTS" || echo -e "${RED}No Catchment files found.${RESET}"
+echo -e "${BLUE}\e[4mFound these Catchment files:${RESET}" && echo "$HYDRO_FABRIC_CATCHMENTS" || echo -e "${RED}No Catchment files found.${RESET}"
 echo -e "\n"
-echo -e "${MAGENTA}\e[4mFound these Nexus files:\e[0m${RESET}" && echo "$HYDRO_FABRIC_NEXUS" || echo -e "${RED}No Nexus files found.${RESET}"
+echo -e "${MAGENTA}\e[4mFound these Nexus files:${RESET}" && echo "$HYDRO_FABRIC_NEXUS" || echo -e "${RED}No Nexus files found.${RESET}"
 echo -e "\n"
-echo -e "${CYAN}\e[4mFound these Realization files:\e[0m${RESET}" && echo "$NGEN_REALIZATIONS" || echo -e "${RED}No Realization files found.${RESET}"
+echo -e "${CYAN}\e[4mFound these Realization files:${RESET}" && echo "$NGEN_REALIZATIONS" || echo -e "${RED}No Realization files found.${RESET}"
 echo -e "\n"
 
 generate_partition() {
   /dmod/bin/partitionGenerator "$1" "$2" "partitions_$3.json" "$3" '' ''
 }
 
-PS3="${YELLOW}Select an option (type a number): ${RESET}"
+echo -e "${YELLOW}Select an option (type a number): ${RESET}"
 options=("Run NextGen model framework in serial mode" "Run NextGen model framework in parallel mode" "Run Bash shell" "Exit")
 select option in "${options[@]}"; do
   case $option in
@@ -69,6 +71,7 @@ select option in "${options[@]}"; do
       fi
 
       echo -e "${YELLOW}Your NGEN run command is $run_command${RESET}"
+      sleep 3
       break
       ;;
     "Run Bash shell")
@@ -85,11 +88,32 @@ select option in "${options[@]}"; do
 done
 
 echo -e "${GREEN}If your model didn't run, or encountered an error, try checking the Forcings paths in the Realizations file you selected.${RESET}"
-echo -e "${GREEN}Your model run is beginning!${RESET}"
-$run_command
+# Ask user if they want to redirect output to /dev/null
+echo -e "${YELLOW}Do you want to redirect command output to /dev/null? (y/N, default: n):${RESET}"
+read -r redirect_choice
+
+# Execute the command
+if [[ "$redirect_choice" == [Yy]* ]]; then
+    echo -e "${GREEN}Redirecting output to /dev/null.${RESET}"
+    $run_command > /dev/null 2>&1
+else
+    $run_command
+fi
+command_status=$?
+
+# Set message color based on command status
+if [ $command_status -eq 0 ]; then
+    color=$GREEN
+    message="Finished executing command successfully."
+else
+    color=$RED
+    message="Command execution failed with exit code $command_status."
+fi
+
+echo -e "${color}${message}${RESET}"
 
 echo -e "${YELLOW}Would you like to continue?${RESET}"
-PS3="${YELLOW}Select an option (type a number): ${RESET}"
+echo -e "${YELLOW}Select an option (type a number): ${RESET}"
 options=("Interactive-Shell" "Exit")
 select option in "${options[@]}"; do
   case $option in
