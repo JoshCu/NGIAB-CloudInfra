@@ -38,7 +38,7 @@ echo -e "${BGreen}config${Color_Off} folder has all the configuration related fi
 echo -e "${BPurple}outputs${Color_Off} is where the output files are copied to when the model finish the run"
 
 echo -e "\n"
-read -rp "Enter your input data directory path (use absolute path): " HOST_DATA_PATH
+read -erp "Enter your input data directory path (use absolute path): " HOST_DATA_PATH
 
 echo -e "The Directory you've given is:" && echo "$HOST_DATA_PATH"
 
@@ -125,17 +125,19 @@ select option in "${options[@]}"; do
 done
 echo -e "\n"
 
-if uname -a | grep arm64 || uname -a | grep aarch64 ; then
+#if uname -a | grep arm64 || uname -a | grep aarch64 ; then
 
-docker pull awiciroh/ciroh-ngen-image:latest-arm
-echo -e "Pulled awiciroh/ciroh-ngen-image:latest-arm image"
-IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-arm
-else
+#docker pull awiciroh/ciroh-ngen-image:latest-arm
+#echo -e "Pulled awiciroh/ciroh-ngen-image:latest-arm image"
+#IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-arm
+#else
 
-docker pull awiciroh/ciroh-ngen-image:latest-x86
-echo -e "Pulled awiciroh/ciroh-ngen-image:latest-x86 image"
-IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-x86
-fi
+#docker pull awiciroh/ciroh-ngen-image:latest-x86
+#echo -e "Pulled awiciroh/ciroh-ngen-image:latest-x86 image"
+#IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-x86
+#fi
+
+IMAGE_NAME=joshcu/ngiab-dev:serial-only
 
 echo -e "\n"
 echo -e "Running NextGen docker container..."

@@ -11,40 +11,46 @@ RUN rm -rf ${BOOST_ROOT} && echo "export PATH=${PATH}" >> /etc/profile \
     && mkdir -p /dmod/bin && chown root /dmod/bin 
 
 # Change permissions for entrypoint and make sure dataset volume mount parent directories exists
-RUN for d in ${DATASET_DIRECTORIES}; do mkdir -p /dmod/datasets/${d}; done \
-    && for d in iso_c_fortran_bmi noah-owp-modular topmodel cfe sloth 'evapotranspiration/evapotranspiration'; do \
-    if [ -d ${WORKDIR}/ngen/extern/${d}/cmake_build ]; then \
-    cp -a ${WORKDIR}/ngen/extern/${d}/cmake_build/*.so* /dmod/shared_libs/.; \
+RUN for d in iso_c_fortran_bmi noah-owp-modular topmodel cfe sloth 'evapotranspiration/evapotranspiration'; do \
+    if [ -d /ngen/extern/${d}/cmake_build ]; then \
+    cp -a /ngen/extern/${d}/cmake_build/*.so* /dmod/shared_libs/.; \
     fi; \
     done \
-    && find ${WORKDIR}/ngen/extern/noah-owp-modular -type f -iname "*.TBL" -exec cp '{}' /dmod/datasets/static  \; \
-    && ( cp -a ${WORKDIR}/ngen/cmake_build_parallel/ngen /dmod/bin/ngen-parallel || true ) \
-    && ( cp -a ${WORKDIR}/ngen/cmake_build_serial/ngen /dmod/bin/ngen-serial || true ) \
-    && ( cp -a ${WORKDIR}/ngen/cmake_build/partitionGenerator /dmod/bin/partitionGenerator || true ) \
+    && find /ngen/extern/noah-owp-modular -type f -iname "*.TBL" -exec cp '{}' /dmod/datasets/static  \; \
+    #&& ( cp -a ${WORKDIR}/ngen/cmake_build_parallel/ngen /dmod/bin/ngen-parallel || true ) \
+    && ( cp -a /ngen/ngen /dmod/bin/ngen-serial || true ) \
+    #&& ( cp -a ${WORKDIR}/ngen/cmake_build/partitionGenerator /dmod/bin/partitionGenerator || true ) \
     && pushd /dmod/bin \
-    && ( ( stat ngen-parallel && ln -s ngen-parallel ngen ) || ( stat ngen-serial && ln -s ngen-serial ngen ) ) \
+    && ln -s ngen-serial ngen \
+    #&& ( ( stat ngen-parallel && ln -s ngen-parallel ngen ) || ( stat ngen-serial && ln -s ngen-serial ngen ) ) \
     && popd 
 
-WORKDIR ${WORKDIR}
-ENV PATH=${WORKDIR}:$PATH
+ENV PATH=/ngen/:$PATH
 
 
 ################################################################################################################
 ##### Final stage for image
-FROM rockylinux:9.2-minimal
+#FROM rockylinux:9.2-minimal
 
 ########################################Copy over the NGEN artifacts############################################
-COPY --chown=root --from=ngen-data /dmod/ /dmod/
-COPY --chown=root --from=ngen-data /usr/ /usr/
+#COPY --chown=root --from=ngen-data /dmod/ /dmod/
+#COPY --chown=root --from=ngen-data /usr/ /usr/
+#COPY --chown=root --from=ngen-data /tmp/requirements.txt /t-route/requirements.txt
+#COPY --chown=root --from=ngen-data /t-route/wheels/ /t-route/wheels/
+
+#RUN pip install /t-route/wheels/*.whl
+#RUN pip install $(grep -v "file://" /t-route/requirements.txt)
+
 ########################################Relink the files########################################################
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
 
+RUN mv /ngen /ngen-devel
 
 
 COPY   HelloNGEN.sh /ngen/HelloNGEN.sh
 RUN chown -R root /dmod /ngen /root
 RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh /root
-RUN rm -rf tmp var opt 
+#RUN rm -rf tmp/* var/* opt/*
 WORKDIR /ngen
 
 ENTRYPOINT ["./HelloNGEN.sh"]

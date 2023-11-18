@@ -2,20 +2,13 @@
 
 FROM local/t-route_wheel as all_stage_shared_deps
 WORKDIR "/"
-RUN yum update -y \
-    && yum install -y bzip2 git
+RUN yum install -y bzip2 git
 
 # Install ngen dependencies
 FROM all_stage_shared_deps as ngen_deps
-RUN yum update -y \
-    && yum install -y dnf-plugins-core \
-    && yum -y install epel-release \
-    && yum repolist \
-    && yum install -y tar gcc-c++ gcc make cmake udunits2-devel boost-devel mpich \ 
+RUN yum install -y tar gcc-c++ gcc make cmake udunits2-devel boost-devel mpich \ 
     && dnf clean all \
     && rm -rf /var/cache/yum
-#yum install python3 python3-devel python3-numpy
-RUN python3 -m pip install numpy pandas pyyaml bmipy
 
 #RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-fortran-openmpi netcdf-fortran-openmpi-devel netcdf-openmpi netcdf-openmpi-devel  netcdf-cxx netcdf-cxx-devel
 
@@ -42,9 +35,11 @@ cmake --build extern/noah-owp-modular/cmake_build --target surfacebmi -- -j $(np
 
 FROM build_prep as install_external_python_modules
 RUN python3 -m pip install -r extern/test_bmi_py/requirements.txt
+# install requirements frozen from troute to avoid mismatched versions
+RUN python3 -m pip install -r /tmp/requirements.txt
 
 FROM install_external_python_modules as ngen_build_prep
-COPY --from=build_external_modules /ngen/extern/ /ngen/external/
+COPY --from=build_external_modules /ngen/extern/ /ngen/extern/
 COPY ngen_cmake_args.txt /tmp/
 RUN NGEN_BUILD_ARGS=$(cat /tmp/ngen_cmake_args.txt)
 
@@ -80,8 +75,8 @@ RUN mpirun -n 3 test/test_remote_nexus
 RUN mpirun -n 4 test/test_remote_nexus
 
 
-FROM ngen_build_all as ngen_final
+FROM ngen_build_all_serial as ngen_final
 
 
 WORKDIR /ngen
-CMD ./ngen data/catchment_data.geojson "" data/nexus_data.geojson "" data/example_realization_config.json
+#CMD ./ngen data/catchment_data.geojson "" data/nexus_data.geojson "" data/example_realization_config.json

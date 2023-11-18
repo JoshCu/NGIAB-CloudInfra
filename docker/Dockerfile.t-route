@@ -1,13 +1,13 @@
 FROM rockylinux:9.2 as t-route_build
-RUN yum install -y epel-release 
-RUN yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi
+RUN yum install -y dnf-plugins-core \
+    && yum -y install epel-release \
+    && yum update -y \
+    && yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi
 
 RUN yum install -y git cmake python python-devel pip 
-# RUN git clone https://github.com/NOAA-OWP/t-route.git
-RUN git clone https://github.com/TrupeshKumarPatel/t-route/
+RUN git clone https://github.com/NOAA-OWP/t-route.git
+#RUN git clone https://github.com/TrupeshKumarPatel/t-route/
 WORKDIR "/t-route/"
-RUN git reset --hard 15bd543
-# 15bd543 <-- after LowerColorado Test fix
 
 RUN ln -s /usr/lib64/gfortran/modules/netcdf.mod /usr/include/openmpi-x86_64/netcdf.mod
 
@@ -16,21 +16,18 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN python -m pip install -r requirements.txt
-# pin version number 3.0.3 deprecated something troute uses
-RUN python -m pip install cython==0.29.36
+RUN python -m pip install wheel
+
 RUN ./compiler.sh no-e
 
-# add troute required modules
-RUN python -m pip install pyarrow deprecated geopandas
+RUN python -m pip freeze > /tmp/requirements.txt
 
-RUN python -m pip freeze > requirements.txt
-
-RUN python -m pip install wheel
 # used by setup.py, needs fixing in t-route to use a python command
 RUN yum install -y which 
 
 ENV FC=gfortran 
 ENV NETCDF=/usr/include
+# increase max open files soft limit
 RUN ulimit -n 10000
 
 
@@ -48,11 +45,10 @@ RUN python setup.py bdist_wheel
 
 
 FROM t-route_build as t-route_standalone
-# increase max open files soft limit
 ENTRYPOINT ["/opt/venv/bin/python", "-m", "nwm_routing"]
 
 
 FROM t-route_build as t-route_wheel
-COPY --from=network_wheel /t-route/src/troute-network/dist/*.whl /t-route/wheels
-COPY --from=routing_wheel /t-route/src/troute-routing/dist/*.whl /t-route/wheels
-COPY --from=nwm_wheel /t-route/src/troute-nwm/dist/*.whl /t-route/wheels
+COPY --from=network_wheel /t-route/src/troute-network/dist/*.whl /t-route/wheels/
+COPY --from=routing_wheel /t-route/src/troute-routing/dist/*.whl /t-route/wheels/
+COPY --from=nwm_wheel /t-route/src/troute-nwm/dist/*.whl /t-route/wheels/
