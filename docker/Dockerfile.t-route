@@ -4,11 +4,11 @@ RUN yum install -y dnf-plugins-core \
     && yum update -y \
     && yum install -y netcdf netcdf-fortran netcdf-fortran-devel netcdf-openmpi
 
-RUN yum install -y git cmake python python-devel pip gdal 
-RUN git clone https://github.com/NOAA-OWP/t-route.git
-#RUN git clone https://github.com/TrupeshKumarPatel/t-route/
+RUN yum install -y git cmake python python-devel pip 
+#RUN git clone https://github.com/NOAA-OWP/t-route.git --single-branch
+RUN git clone https://github.com/joshcu/t-route/
 WORKDIR "/t-route/"
-
+RUN git checkout remove_fiona
 RUN if [ -d /usr/include/openmpi-x86_64/ ]; then \
         ln -s /usr/lib64/gfortran/modules/netcdf.mod /usr/include/openmpi-x86_64/netcdf.mod; \
     else \
