@@ -151,15 +151,22 @@ else
     echo "Docker not found"
 fi 
 
+IMAGE_NAME=joshcu/ngiab-dev
+
 # Model run options
 echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
-options=("Run NextGen Model using docker" "Exit")
+options=("Run NextGen Model using local docker image" "Run Nextgen using remote docker image" "Exit")
 select option in "${options[@]}"; do
     case $option in
-        "Run NextGen Model using docker")
-            echo "Pulling NextGen docker image and running the model"
+        "Run NextGen Model using local docker image")
+            echo "running the model"
             break
             ;;
+	"Run Nextgen using remote docker image")
+	    echo "pulling container and running the model"
+	    docker pull $IMAGE_NAME
+	    break
+	    ;;
         Exit)
             echo "Have a nice day!"
             exit 0
@@ -169,17 +176,6 @@ select option in "${options[@]}"; do
     esac
 done
 
-# Docker Image
-IMAGE_NAME=joshcu/ngiab-dev
-
-# Prompt user to pull the image
-read -pe "${BBlue}Do you want to pull the latest Docker image?${Color_Off} (Y/n): " pull_answer
-
-# Check the user's response
-if [[ "$pull_answer" != [Nn]* ]]; then
-    echo "Pulling the latest Docker image..."
-    docker pull "$IMAGE_NAME"
-fi
 
 echo -e "\nRunning NextGen docker container..."
 echo -e "Mounting local host directory $HOST_DATA_PATH to /ngen/ngen/data within the container."
