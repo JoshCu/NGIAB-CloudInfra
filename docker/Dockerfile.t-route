@@ -12,7 +12,8 @@ RUN git checkout remove_fiona
 RUN if [ -d /usr/include/openmpi-x86_64/ ]; then \
         ln -s /usr/lib64/gfortran/modules/netcdf.mod /usr/include/openmpi-x86_64/netcdf.mod; \
     else \
-        echo "/usr/include/openmpi-x86_64/ not found"; \
+         ln -s /usr/lib64/gfortran/modules/netcdf.mod /usr/include/openmpi-aarch64/netcdf.mod;\
+         ln -s /usr/include/openmpi-aarch64 /usr/include/openmpi-x86_64;\
     fi
 
 
