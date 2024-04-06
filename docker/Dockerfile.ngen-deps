@@ -1,39 +1,27 @@
-################################################################################################################
-##### External Global Args Declaration and Defaults
-################################################################################################################
-# Any args that will need to be set, first declare them here, then later redeclare them within stage that uses.
-# Also, for those with defaults, set those up here so that's easier to find.
 
-ARG WORKDIR=/ngen \
-    ROCKY_NGEN_DEPS_REQUIRED="sudo gcc gcc-c++ make cmake tar git gcc-gfortran libgfortran sqlite sqlite-devel \
+FROM rockylinux:9.1 as rocky-base
+ENV ROCKY_NGEN_DEPS_REQUIRED="sudo gcc gcc-c++ make cmake tar git gcc-gfortran libgfortran sqlite sqlite-devel \
     python3 python3-devel python3-pip gdal gdal-devel\
     bzip2 expat expat-devel flex bison udunits2 udunits2-devel zlib-devel" \
     BOOST_VERSION=1.79.0 \
-    MPICH_VERSION="3.3.2" \
+    MPICH_VERSION=3.3.2 \
     NETCDF_C_VERSION=4.8.1 \
     NETCDF_CXX_VERSION=4.3.1 \
     NETCDF_FORTRAN_VERSION=4.6.0 \
     HD5_VERSION=1.10.9 \
     BLOSC2_VERSION=v2.2.0 \
-    MPICH_CONFIGURE_OPTIONS="" \
-    MPICH_MAKE_OPTIONS \
-    NGEN_ACTIVATE_PYTHON="ON"
+    NGEN_ACTIVATE_PYTHON="ON" \
+    HYDRA_HOST_FILE=/etc/opt/hosts
 
-################################################################################################################
-################################################################################################################
-##### Create intermediate Docker build stage for Rocky-Linux-based "base"
-FROM rockylinux:9.1 as rocky-base
+FROM rocky-base as dnf-update
 
-ARG WORKDIR=/ngen 
 RUN dnf update -y \
     && dnf install -y 'dnf-command(config-manager)' \
     && dnf config-manager --set-enabled crb \
     && dnf install -y epel-release \
-    && dnf -y install sudo bash git
+    && dnf update -y \
+    && dnf -y install sudo bash git gh
 
-################################################################################################################
-################################################################################################################
-##### Create intermediate Docker build stage for downloading netcdf-fortran
 FROM rocky-base AS downloads
 
 # Redeclaring inside this stage to get default from before first FROM
@@ -115,58 +103,96 @@ COPY --from=downloads /tmp/netcdf-${NETCDF_C_VERSION}.tar.gz /tmp/ngen-deps/netc
 COPY --from=downloads /tmp/netcdf-cxx4-${NETCDF_CXX_VERSION}.tar.gz /tmp/ngen-deps/netcdf-cxx4-${NETCDF_CXX_VERSION}.tar.gz 
 COPY --from=downloads /tmp/netcdf-fortran-${NETCDF_FORTRAN_VERSION}.tar.gz /tmp/ngen-deps/netcdf-fortran-${NETCDF_FORTRAN_VERSION}.tar.gz
 
+WORKDIR /tmp/downloads
+
+RUN wget https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION//./_}.tar.bz2/download
+RUN wget https://www.mpich.org/static/downloads/${MPICH_VERSION}/mpich-${MPICH_VERSION}.tar.gz
+RUN wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-${HD5_VERSION}/src/hdf5-${HD5_VERSION}.tar.gz
+RUN wget https://github.com/Unidata/netcdf-c/archive/refs/tags/v${NETCDF_C_VERSION}.tar.gz
+RUN wget https://github.com/Unidata/netcdf-fortran/archive/refs/tags/v${NETCDF_C_VERSION}.tar.gz
+RUN wget https://github.com/Unidata/netcdf-cxx4/archive/refs/tags/v${NETCDF_C_VERSION}.tar.gz
+
+FROM dnf-update as pip_and_dnf_deps
+
+RUN dnf install -y ${ROCKY_NGEN_DEPS_REQUIRED} 
 RUN pip3 install --upgrade pip \
-    && pip3 install -t /ngen numpy pandas pyyaml bmipy Cython netCDF4 wheel packaging opencv-contrib-python-headless \
-    # Hostfile location for mpirun. This file will be updated automatically.
-    && echo "export HYDRA_HOST_FILE=${HYDRA_HOST_FILE}" >> /etc/profile \
-    && touch ${HYDRA_HOST_FILE} \
-    ################### Build and install dependencies from source ################### \
-    ##### Prep temp build root directory \
-    && mkdir -p /tmp/ngen-deps \
-    ##### Build and install mpich \
-    && cd /tmp/ngen-deps \
-    && tar xfz mpich-${MPICH_VERSION}.tar.gz  \
+    && pip3 install numpy pandas pyyaml bmipy Cython==3.0.3 netCDF4==1.6.3 wheel packaging opencv-contrib-python-headless \
+    && pip3 install -v --no-build-isolation tables
+
+FROM pip_and_dnf_deps as build_mpich
+WORKDIR /build
+COPY --from=downloads /tmp/downloads/*mpich* .
+RUN tar xfz mpich-${MPICH_VERSION}.tar.gz  \
     && cd mpich-${MPICH_VERSION} \
-    # mpich3 and gfortran > 10 don't get along...https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91731
-    && FFLAGS="-w -fallow-argument-mismatch -O2" ./configure ${MPICH_CONFIGURE_OPTIONS} \
-    && make -j $(nproc) ${MPICH_MAKE_OPTIONS} && make install \
-    ##### Build and install HDF5 \
-    && cd /tmp/ngen-deps \
-    && tar -xzf hdf5-${HD5_VERSION}.tar.gz \
+    && FFLAGS="-w -fallow-argument-mismatch -O2" ./configure \
+    && make -j $(nproc)
+
+FROM pip_and_dnf_deps as build_hdf5
+WORKDIR /build
+COPY --from=downloads /tmp/downloads/*hdf5* .
+RUN tar -xzf hdf5-${HD5_VERSION}.tar.gz \
     && cd hdf5-${HD5_VERSION} \
     && ./configure --enable-parallel --prefix=/usr \
-    && make -j $(nproc) && make install \
-    ##### Build and install NetCDF C \
-    && cd /tmp/ngen-deps \
-    && mkdir netcdf \
-    && tar -xzf netcdf-${NETCDF_C_VERSION}.tar.gz -C netcdf --strip 1 \
-    && cd netcdf \
-    && LIBS=curl && ./configure --prefix=/usr \
-    && make -j $(nproc) && make install \
-    ##### Build and install NetCDF Fortran \
-    && cd /tmp/ngen-deps \
-    && mkdir netcdf-fortran \
-    && tar -xzf netcdf-fortran-${NETCDF_FORTRAN_VERSION}.tar.gz -C netcdf-fortran --strip 1 \
-    && cd netcdf-fortran \
+    && make -j $(nproc)
+
+FROM pip_and_dnf_deps as build_netcdf_c
+WORKDIR /build
+COPY --from=downloads /tmp/downloads/*netcdf* .
+RUN tar -xzf netcdf-${NETCDF_C_VERSION}.tar.gz \
+    && cd netcdf-${NETCDF_C_VERSION} \
+    && ./configure --prefix=/usr \
+    && make -j $(nproc)
+
+FROM pip_and_dnf_deps as build_netcdf_fortran
+WORKDIR /build
+COPY --from=downloads /tmp/downloads/*netcdf* .
+RUN tar -xzf netcdf-fortran-${NETCDF_FORTRAN_VERSION}.tar.gz \
+    && cd netcdf-fortran-${NETCDF_FORTRAN_VERSION} \
     && export NCDIR=/usr NFDIR=/usr \
     && LD_LIBRARY_PATH=/usr/lib CPPFLAGS=-I/usr/include LDFLAGS=-L/usr/lib ./configure --prefix=/usr \
-    && make -j $(nproc) \ 
-    && make install \
-    ##### Build and install NetCDF C++ 
-    && cd /tmp/ngen-deps \
-    && mkdir netcdf-cxx4 \
-    && tar -xzf netcdf-cxx4-${NETCDF_CXX_VERSION}.tar.gz -C netcdf-cxx4 --strip 1 \
-    && mkdir netcdf-cxx4/build \
-    && cd netcdf-cxx4/build \
+    && make -j $(nproc)
+
+FROM pip_and_dnf_deps as build_netcdf_cxx
+WORKDIR /build
+COPY --from=downloads /tmp/downloads/*netcdf* .
+RUN tar -xzf netcdf-cxx4-${NETCDF_CXX_VERSION}.tar.gz \
+    && cd netcdf-cxx4-${NETCDF_CXX_VERSION} \
+    && mkdir build \
+    && cd build \
     && ../configure --enable-parallel --prefix=/usr \
     && cmake .. \
-    && make \
+    && make -j $(nproc)
+
+FROM pip_and_dnf_deps as ngen-deps
+COPY --from=build_mpich /build/mpich-${MPICH_VERSION} /build/mpich-${MPICH_VERSION}
+COPY --from=build_hdf5 /build/hdf5-${HD5_VERSION} /build/hdf5-${HD5_VERSION}
+COPY --from=build_netcdf_c /build/netcdf-${NETCDF_C_VERSION} /build/netcdf-${NETCDF_C_VERSION}
+COPY --from=build_netcdf_fortran /build/netcdf-fortran-${NETCDF_FORTRAN_VERSION} /build/netcdf-fortran-${NETCDF_FORTRAN_VERSION}
+COPY --from=build_netcdf_cxx /build/netcdf-cxx4-${NETCDF_CXX_VERSION} /build/netcdf-cxx4-${NETCDF_CXX_VERSION}
+COPY --from=downloads /tmp/downloads/boost_${BOOST_VERSION//./_}.tar.bz2 /ngen/boost/boost_${BOOST_VERSION//./_}.tar.bz2
+
+ENV BOOST_ROOT=/ngen/boost
+
+RUN cd /build/mpich-${MPICH_VERSION} \
+    && make install \
+    && cd /build/hdf5-${HD5_VERSION} \
+    && make install \
+    && cd /build/netcdf-${NETCDF_C_VERSION} \
+    && make install \
+    && cd /build/netcdf-fortran-${NETCDF_FORTRAN_VERSION} \
+    && make install \
+    && cd /build/netcdf-cxx4-${NETCDF_CXX_VERSION}/build \
     && make install \
     # Install required python dependency packages with Pip \
     && pip3 install blosc2 \
     && pip3 install numpy pandas pyyaml bmipy Cython==3.0.3 netCDF4==1.6.3 wheel packaging \
     && HDF5_DIR=/usr pip3 install -v --no-build-isolation tables \
     # Make aliases for convenience \
+    && cd /ngen/boost \
+    && tar -xjf boost_${BOOST_VERSION//./_}.tar.bz2 \
+    && rm boost_${BOOST_VERSION//./_}.tar.bz2 
+
+RUN touch ${HYDRA_HOST_FILE} \
     && alias pip='pip3' \
     && echo "alias pip='pip3'" >> /etc/profile \
     && alias python='python3'  \
@@ -177,6 +203,7 @@ RUN pip3 install --upgrade pip \
     && mv boost_${BOOST_VERSION//./_} ${BOOST_ROOT} \
     && rm boost_${BOOST_VERSION//./_}.tar.bz2 \
     && rm -rf /tmp/ngen-deps 
+&& echo "alias python='python3'" >> /etc/profile 
 
 ENV PATH=${PATH}:/usr/lib64/mpich/bin
 ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/lib:/usr/local/lib64
