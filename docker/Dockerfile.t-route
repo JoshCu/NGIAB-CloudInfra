@@ -1,12 +1,11 @@
-ARG TROUTE_REPO_URL=https://github.com/NOAA-OWP/t-route.git \
-    TROUTE_BRANCH=master \
+FROM awiciroh/ngen-deps as rocky_build_troute
+ARG TROUTE_REPO_URL="https://github.com/NOAA-OWP/t-route.git" \
+    TROUTE_BRANCH="master" \
     TROUTE_COMMIT=""
 
-FROM awiciroh/ngen-deps as rocky_build_troute
-
 WORKDIR /ngen
-
-RUN git clone --single-branch --branch $TROUTE_BRANCH $TROUTE_REPO_URL \
+RUN dnf install git -y
+RUN git clone --depth 1 --single-branch --branch $TROUTE_BRANCH $TROUTE_REPO_URL \
     && cd t-route \
     && if [ -n "$TROUTE_COMMIT" ]; then git checkout $TROUTE_COMMIT; fi \
     && git submodule update --init
