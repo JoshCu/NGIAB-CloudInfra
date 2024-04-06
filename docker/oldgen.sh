@@ -45,6 +45,25 @@ echo -e "\n"
 echo -e "${CYAN}\e[4mFound these Realization files:${RESET}" && echo "$NGEN_REALIZATIONS" || echo -e "${RED}No Realization files found.${RESET}"
 echo -e "\n"
 
+generate_partition() {
+  /dmod/bin/partitionGenerator "$1" "$2" "partitions_$3.json" "$3" '' ''
+}
+
+if [ "$2" == "auto" ]
+  then
+    echo "AUTO MODE ENGAGED"
+    echo "Running NextGen model framework in parallel mode"
+    procs=$(nproc)
+    procs=2 # Temporary fixed value, remove for full utilization
+    generate_partition "$selected_catchment" "$selected_nexus" "$procs"
+    mpirun -n $procs /dmod/bin/ngen-parallel $selected_catchment all $selected_nexus all $selected_realization $(pwd)/partitions_$procs.json
+    echo "Run completed successfully, exiting, have a nice day!"
+    exit 0
+  else
+    echo "Entering Interactive Mode"
+    continue
+fi
+
 echo -e "${YELLOW}Select an option (type a number): ${RESET}"
 options=("Run NextGen model framework in serial mode" "Run NextGen model framework in parallel mode" "Run Bash shell" "Exit")
 select option in "${options[@]}"; do
@@ -59,20 +78,15 @@ select option in "${options[@]}"; do
 
       if [ "$option" == "Run NextGen model framework in parallel mode" ]; then
         procs=$(nproc)
-        catchments=$(grep -o remote /ngen/ngen/data/config/partitions.json | wc -l)
-        if (( $procs>$catchments )); then
-          procs=$catchments
-        fi
-        #generate_partition "$selected_catchment" "$selected_nexus" "$procs"
-        echo $procs
-        run_command="mpirun -n $procs /dmod/bin/ngen-parallel $selected_catchment all $selected_nexus all $selected_realization $(pwd)/config/partitions.json"
-        
+        procs=2 # Temporary fixed value
+        generate_partition "$n1" "$n2" "$procs"
+        run_command="mpirun -n $procs /dmod/bin/ngen-parallel $n1 all $n2 all $n3 $(pwd)/partitions_$procs.json"
       else
         run_command="/dmod/bin/ngen-serial $n1 all $n2 all $n3"
       fi
 
       echo -e "${YELLOW}Your NGEN run command is $run_command${RESET}"
-
+      sleep 3
       break
       ;;
     "Run Bash shell")

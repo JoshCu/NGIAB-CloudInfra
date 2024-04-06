@@ -163,7 +163,6 @@ else
     IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-x86
 fi
 
-
 # Model run options
 echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
 options=("Run NextGen using existing local docker image" "Run NextGen after updating to latest docker image" "Exit")
@@ -171,6 +170,7 @@ select option in "${options[@]}"; do
     case $option in
         "Run NextGen using existing local docker image")
             echo "running the model"
+            IMAGE_NAME=testbox
             break
             ;;
         "Run NextGen after updating to latest docker image")
@@ -190,7 +190,7 @@ done
 
 echo -e "\nRunning NextGen docker container..."
 echo -e "Mounting local host directory $HOST_DATA_PATH to /ngen/ngen/data within the container."
-docker run --rm -it -v "$HOST_DATA_PATH:/ngen/ngen/data" "$IMAGE_NAME" /ngen/ngen/data/
+docker run --rm -it -v "$HOST_DATA_PATH:/ngen/ngen/data" "$IMAGE_NAME" /ngen/ngen/data/ 
 
 # Final output count
 Final_Outputs_Count=$(ls "$HOST_DATA_PATH/outputs" | wc -l)

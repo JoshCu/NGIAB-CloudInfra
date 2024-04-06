@@ -1,0 +1,23 @@
+Finished routing
+NGen top-level timings:
+	NGen::init: 132.846
+	NGen::simulation: 761.84
+	NGen::routing: 2609.83
+creating supernetwork connections set
+supernetwork connections set complete
+... in 14.514425039291382 seconds.
+Reformating qlat nexus files as hourly binary files...
+************ TIMING SUMMARY ************
+----------------------------------------
+Network graph construction: 14.57 secs, 0.56 %
+Forcing array construction: 846.29 secs, 32.43 %
+Routing computations: 992.13 secs, 38.02 %
+Output writing: 756.78 secs, 29.0 %
+----------------------------------------
+Total execution time: 2609.77 secs
+
+real	58m27.111s
+user	3083m35.064s
+sys	63m29.289s
+Run completed successfully, exiting, have a nice day!
+8785 new outputs created.

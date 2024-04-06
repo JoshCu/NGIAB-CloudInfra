@@ -1,0 +1,21 @@
+Finished routing
+NGen top-level timings:
+	NGen::init: 1.98952
+	NGen::simulation: 0.0736356
+	NGen::routing: 3.75136
+creating supernetwork connections set
+supernetwork connections set complete
+... in 0.23643207550048828 seconds.
+Reformating qlat nexus files as hourly binary files...
+************ TIMING SUMMARY ************
+----------------------------------------
+Network graph construction: 0.24 secs, 6.4 %
+Forcing array construction: 1.0 secs, 26.71 %
+Routing computations: 0.08 secs, 2.14 %
+Output writing: 2.41 secs, 64.64 %
+----------------------------------------
+Total execution time: 3.7300000000000004 secs
+Run completed successfully, exiting, have a nice day!
+217 new outputs created.
+Any copied files can be found here: /home/josh/water/NGIAB_data_preprocess/output/wb-1406//outputs
+Thank you for running NextGen In A Box: National Water Model! Have a nice day!

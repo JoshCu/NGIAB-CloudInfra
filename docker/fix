@@ -1,0 +1,9 @@
+FROM awiciroh/ciroh-ngen-image:latest-x86 AS fix
+COPY   HelloNGEN.sh /ngen/HelloNGEN.sh
+RUN chown -R root /dmod /ngen /root
+RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh /root
+RUN rm -rf tmp var opt 
+WORKDIR /ngen
+
+ENTRYPOINT ["./HelloNGEN.sh"]
+CMD [""]
