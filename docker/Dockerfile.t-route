@@ -8,7 +8,7 @@ RUN dnf install git -y
 RUN git clone --depth 1 --single-branch --branch $TROUTE_BRANCH $TROUTE_REPO_URL \
     && cd t-route \
     && if [ -n "$TROUTE_COMMIT" ]; then git checkout $TROUTE_COMMIT; fi \
-    && git submodule update --init
+    && git submodule update --init --depth 1
 
 WORKDIR /ngen/t-route
 
