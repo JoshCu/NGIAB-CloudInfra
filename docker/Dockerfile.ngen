@@ -1,4 +1,5 @@
-FROM ngen-deps as clone_ngen
+ARG VERSION
+FROM ngen-deps-${VERSION} as clone_ngen
 
 ENV NGEN_ACTIVATE_C="ON" \
     NGEN_ACTIVATE_FORTRAN="ON" \
@@ -28,15 +29,10 @@ RUN if [ -n "$COMMIT"]; then \
     && git submodule update --init --depth 1 test/googletest \
     && git submodule update --init --recursive --depth 1
 
-
-
-################################################################################################################
-################################################################################################################
-##### Create intermediate Docker build stage for building framework in Rocky Linux environment
 FROM clone_ngen as build_ngen
 
-COPY --chown=root --from=rocky_build_troute /ngen/t-route/wheels /tmp/t-route-wheels
-COPY --chown=root --from=rocky_build_troute /ngen/t-route/requirements.txt /tmp/t-route-requirements.txt
+COPY --chown=root --from=t-route-${VERSION} /ngen/t-route/wheels /tmp/t-route-wheels
+COPY --chown=root --from=t-route-${VERSION} /ngen/t-route/requirements.txt /tmp/t-route-requirements.txt
 ENV BOOST_ROOT=/ngen/boost
 
 USER root
@@ -100,3 +96,11 @@ RUN rm -f ./test/data/routing/*.parquet \
     && mpirun -n 3 cmake_build_parallel/test/test_remote_nexus \
     && mpirun -n 4 cmake_build_parallel/test/test_remote_nexus \
     && find cmake_build* -type f -name "*" ! \( -name "*.so" -o -name "ngen" -o -name "partitionGenerator" \) -exec rm {} + 
+
+FROM build_ngen as ngen
+# Remove the boost headers now that ngen is compiled; also update path and make sure dataset directory is there
+RUN rm -rf ${BOOST_ROOT} && echo "export PATH=${PATH}" >> /etc/profile \
+    && mkdir -p /dmod/datasets && chown root /dmod/datasets \
+    && mkdir -p /dmod/datasets/static && chown root /dmod/datasets/static \
+    && mkdir -p /dmod/shared_libs && chown root /dmod/shared_libs \
+    && mkdir -p /dmod/bin && chown root /dmod/bin 

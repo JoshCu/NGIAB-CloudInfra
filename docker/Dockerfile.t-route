@@ -1,4 +1,5 @@
-FROM awiciroh/ngen-deps as rocky_build_troute
+ARG VERSION
+FROM ngen-deps-${VERSION} as build_troute
 ARG TROUTE_REPO_URL="https://github.com/NOAA-OWP/t-route.git" \
     TROUTE_BRANCH="master" \
     TROUTE_COMMIT=""
