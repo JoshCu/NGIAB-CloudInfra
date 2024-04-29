@@ -1,37 +1,39 @@
-
 FROM rockylinux:9.1 as rocky-base
 ENV ROCKY_NGEN_DEPS_REQUIRED="sudo gcc gcc-c++ make cmake tar git gcc-gfortran libgfortran sqlite sqlite-devel \
     python3 python3-devel python3-pip gdal gdal-devel\
     bzip2 expat expat-devel flex bison udunits2 udunits2-devel zlib-devel" \
-    BOOST_VERSION=1.79.0 \
-    MPICH_VERSION=3.3.2 \
-    NETCDF_C_VERSION=4.8.1 \
-    NETCDF_CXX_VERSION=4.3.1 \
-    NETCDF_FORTRAN_VERSION=4.6.0 \
-    HD5_VERSION=1.10.9 \
-    BLOSC2_VERSION=v2.2.0 \
+    BOOST_VERSION="1.79.0" \
+    MPICH_VERSION="3.3.2" \
+    NETCDF_C_VERSION="4.8.1" \
+    NETCDF_CXX_VERSION="4.3.1" \
+    NETCDF_FORTRAN_VERSION="4.6.0" \
+    HD5_VERSION="1.10.9" \
     NGEN_ACTIVATE_PYTHON="ON" \
     HYDRA_HOST_FILE=/etc/opt/hosts
+RUN dnf install -y wget
 
 FROM rocky-base as dnf-update
 
-RUN dnf update -y \
-    && dnf install -y 'dnf-command(config-manager)' \
-    && dnf config-manager --set-enabled crb \
-    && dnf install -y epel-release \
-    && dnf update -y \
-    && dnf -y install sudo bash git gh
+RUN dnf update -y 
+RUN dnf install -y 'dnf-command(config-manager)' 
+RUN dnf config-manager --set-enabled crb 
+RUN dnf install -y epel-release 
+RUN dnf update -y 
+RUN dnf -y install sudo bash git wget
+# Install security updates
+RUN dnf upgrade -y
 
 FROM rocky-base AS downloads
 
 WORKDIR /tmp/downloads
 
-RUN wget https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION//./_}.tar.bz2/download
-RUN wget https://www.mpich.org/static/downloads/${MPICH_VERSION}/mpich-${MPICH_VERSION}.tar.gz
+RUN wget https://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION//./_}.tar.bz2 -O boost.tar.bz2
+RUN wget https://www.mpich.org/static/downloads/${MPICH_VERSION}/mpich-${MPICH_VERSION}.tar.gz 
 RUN wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-${HD5_VERSION}/src/hdf5-${HD5_VERSION}.tar.gz
-RUN wget https://github.com/Unidata/netcdf-c/archive/refs/tags/v${NETCDF_C_VERSION}.tar.gz
-RUN wget https://github.com/Unidata/netcdf-fortran/archive/refs/tags/v${NETCDF_C_VERSION}.tar.gz
-RUN wget https://github.com/Unidata/netcdf-cxx4/archive/refs/tags/v${NETCDF_C_VERSION}.tar.gz
+
+RUN curl -L https://api.github.com/repos/Unidata/netcdf-c/tarball/v${NETCDF_C_VERSION} --output netcdf-c.tar.gz
+RUN curl -L https://api.github.com/repos/Unidata/netcdf-fortran/tarball/v${NETCDF_FORTRAN_VERSION} --output netcdf-fortran.tar.gz
+RUN curl -L https://api.github.com/repos/Unidata/netcdf-cxx4/tarball/v${NETCDF_CXX_VERSION} --output netcdf-cxx.tar.gz
 
 FROM dnf-update as pip_and_dnf_deps
 
@@ -58,26 +60,23 @@ RUN tar -xzf hdf5-${HD5_VERSION}.tar.gz \
 
 FROM pip_and_dnf_deps as build_netcdf_c
 WORKDIR /build
-COPY --from=downloads /tmp/downloads/*netcdf* .
-RUN tar -xzf netcdf-${NETCDF_C_VERSION}.tar.gz \
-    && cd netcdf-${NETCDF_C_VERSION} \
+COPY --from=downloads /tmp/downloads/netcdf-c.tar.gz .
+RUN tar --strip-components=1 -xzf netcdf-c.tar.gz \
     && ./configure --prefix=/usr \
     && make -j $(nproc)
 
 FROM pip_and_dnf_deps as build_netcdf_fortran
 WORKDIR /build
-COPY --from=downloads /tmp/downloads/*netcdf* .
-RUN tar -xzf netcdf-fortran-${NETCDF_FORTRAN_VERSION}.tar.gz \
-    && cd netcdf-fortran-${NETCDF_FORTRAN_VERSION} \
+COPY --from=downloads /tmp/downloads/netcdf-fortran.tar.gz .
+RUN tar --strip-components=1 -xzf netcdf-fortran.tar.gz \
     && export NCDIR=/usr NFDIR=/usr \
     && LD_LIBRARY_PATH=/usr/lib CPPFLAGS=-I/usr/include LDFLAGS=-L/usr/lib ./configure --prefix=/usr \
     && make -j $(nproc)
 
 FROM pip_and_dnf_deps as build_netcdf_cxx
 WORKDIR /build
-COPY --from=downloads /tmp/downloads/*netcdf* .
-RUN tar -xzf netcdf-cxx4-${NETCDF_CXX_VERSION}.tar.gz \
-    && cd netcdf-cxx4-${NETCDF_CXX_VERSION} \
+COPY --from=downloads /tmp/downloads/netcdf-cxx.tar.gz . 
+RUN tar --strip-components=1 -xzf netcdf-cxx.tar.gz \
     && mkdir build \
     && cd build \
     && ../configure --enable-parallel --prefix=/usr \
@@ -87,10 +86,10 @@ RUN tar -xzf netcdf-cxx4-${NETCDF_CXX_VERSION}.tar.gz \
 FROM pip_and_dnf_deps as ngen-deps
 COPY --from=build_mpich /build/mpich-${MPICH_VERSION} /build/mpich-${MPICH_VERSION}
 COPY --from=build_hdf5 /build/hdf5-${HD5_VERSION} /build/hdf5-${HD5_VERSION}
-COPY --from=build_netcdf_c /build/netcdf-${NETCDF_C_VERSION} /build/netcdf-${NETCDF_C_VERSION}
-COPY --from=build_netcdf_fortran /build/netcdf-fortran-${NETCDF_FORTRAN_VERSION} /build/netcdf-fortran-${NETCDF_FORTRAN_VERSION}
-COPY --from=build_netcdf_cxx /build/netcdf-cxx4-${NETCDF_CXX_VERSION} /build/netcdf-cxx4-${NETCDF_CXX_VERSION}
-COPY --from=downloads /tmp/downloads/boost_${BOOST_VERSION//./_}.tar.bz2 /ngen/boost/boost_${BOOST_VERSION//./_}.tar.bz2
+COPY --from=build_netcdf_c /build/netcdf-c /build/netcdf-c
+COPY --from=build_netcdf_fortran /build/netcdf-fortran /build/netcdf-fortran
+COPY --from=build_netcdf_cxx /build/netcdf-cxx /build/netcdf-cxx
+COPY --from=downloads /tmp/downloads/boost.tar.bz2 /ngen/boost/boost.tar.bz2
 
 ENV BOOST_ROOT=/ngen/boost
 
@@ -98,15 +97,15 @@ RUN cd /build/mpich-${MPICH_VERSION} \
     && make install \
     && cd /build/hdf5-${HD5_VERSION} \
     && make install \
-    && cd /build/netcdf-${NETCDF_C_VERSION} \
+    && cd /build/netcdf \
     && make install \
-    && cd /build/netcdf-fortran-${NETCDF_FORTRAN_VERSION} \
+    && cd /build/netcdf-fortran \
     && make install \
-    && cd /build/netcdf-cxx4-${NETCDF_CXX_VERSION}/build \
+    && cd /build/netcdf-cxx4/build \
     && make install \
     && cd /ngen/boost \
-    && tar -xjf boost_${BOOST_VERSION//./_}.tar.bz2 \
-    && rm boost_${BOOST_VERSION//./_}.tar.bz2 
+    && tar -xjf boost.tar.bz2 \
+    && rm boost.tar.bz2 
 
 RUN touch ${HYDRA_HOST_FILE} \
     && alias pip='pip3' \
