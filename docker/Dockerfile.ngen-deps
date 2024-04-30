@@ -42,69 +42,52 @@ RUN pip3 install --upgrade pip \
     && pip3 install numpy pandas pyyaml bmipy Cython==3.0.3 netCDF4==1.6.3 wheel packaging opencv-contrib-python-headless \
     && pip3 install -v --no-build-isolation tables
 
-FROM pip_and_dnf_deps as build_mpich
-WORKDIR /build
+
+WORKDIR /build_mpich
 COPY --from=downloads /tmp/downloads/*mpich* .
 RUN tar xfz mpich-${MPICH_VERSION}.tar.gz  \
     && cd mpich-${MPICH_VERSION} \
     && FFLAGS="-w -fallow-argument-mismatch -O2" ./configure \
-    && make -j $(nproc)
+    && make -j $(nproc) \
+    && make install
 
-FROM pip_and_dnf_deps as build_hdf5
-WORKDIR /build
+WORKDIR /build_hdf5
 COPY --from=downloads /tmp/downloads/*hdf5* .
-RUN tar -xzf hdf5-${HD5_VERSION}.tar.gz \
-    && cd hdf5-${HD5_VERSION} \
+RUN tar --strip-components=2 -xzf hdf5-${HD5_VERSION}.tar.gz \
     && ./configure --enable-parallel --prefix=/usr \
-    && make -j $(nproc)
+    && make -j $(nproc) \
+    && make install
 
-FROM pip_and_dnf_deps as build_netcdf_c
-WORKDIR /build
+WORKDIR /build_netcdf_c
 COPY --from=downloads /tmp/downloads/netcdf-c.tar.gz .
 RUN tar --strip-components=1 -xzf netcdf-c.tar.gz \
     && ./configure --prefix=/usr \
-    && make -j $(nproc)
+    && make -j $(nproc) \
+    && make install
 
-FROM pip_and_dnf_deps as build_netcdf_fortran
-WORKDIR /build
+WORKDIR /build_netcdf_fortran
 COPY --from=downloads /tmp/downloads/netcdf-fortran.tar.gz .
 RUN tar --strip-components=1 -xzf netcdf-fortran.tar.gz \
     && export NCDIR=/usr NFDIR=/usr \
     && LD_LIBRARY_PATH=/usr/lib CPPFLAGS=-I/usr/include LDFLAGS=-L/usr/lib ./configure --prefix=/usr \
-    && make -j $(nproc)
+    && make -j $(nproc) \
+    && make install
 
-FROM pip_and_dnf_deps as build_netcdf_cxx
-WORKDIR /build
+WORKDIR /build_netcdf_cxx
 COPY --from=downloads /tmp/downloads/netcdf-cxx.tar.gz . 
 RUN tar --strip-components=1 -xzf netcdf-cxx.tar.gz \
     && mkdir build \
     && cd build \
     && ../configure --enable-parallel --prefix=/usr \
     && cmake .. \
-    && make -j $(nproc)
-
-FROM pip_and_dnf_deps as ngen-deps
-COPY --from=build_mpich /build/mpich-${MPICH_VERSION} /build/mpich-${MPICH_VERSION}
-COPY --from=build_hdf5 /build/hdf5-${HD5_VERSION} /build/hdf5-${HD5_VERSION}
-COPY --from=build_netcdf_c /build/netcdf-c /build/netcdf-c
-COPY --from=build_netcdf_fortran /build/netcdf-fortran /build/netcdf-fortran
-COPY --from=build_netcdf_cxx /build/netcdf-cxx /build/netcdf-cxx
-COPY --from=downloads /tmp/downloads/boost.tar.bz2 /ngen/boost/boost.tar.bz2
+    && make -j $(nproc) \
+    && make install
 
 ENV BOOST_ROOT=/ngen/boost
 
-RUN cd /build/mpich-${MPICH_VERSION} \
-    && make install \
-    && cd /build/hdf5-${HD5_VERSION} \
-    && make install \
-    && cd /build/netcdf \
-    && make install \
-    && cd /build/netcdf-fortran \
-    && make install \
-    && cd /build/netcdf-cxx4/build \
-    && make install \
-    && cd /ngen/boost \
-    && tar -xjf boost.tar.bz2 \
+WORKDIR $BOOST_ROOT
+COPY --from=downloads /tmp/downloads/boost.tar.bz2 .
+RUN tar -xjf boost.tar.bz2 \
     && rm boost.tar.bz2 
 
 RUN touch ${HYDRA_HOST_FILE} \
