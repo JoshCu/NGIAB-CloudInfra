@@ -107,6 +107,10 @@ RUN cd /build/mpich-${MPICH_VERSION} \
     && cd /ngen/boost \
     && tar -xjf boost_${BOOST_VERSION//./_}.tar.bz2 \
     && rm boost_${BOOST_VERSION//./_}.tar.bz2 
+WORKDIR $BOOST_ROOT
+COPY --from=downloads /tmp/downloads/boost.tar.bz2 .
+RUN tar --strip-components=1 -xjf boost.tar.bz2 \
+    && rm boost.tar.bz2 
 
 RUN touch ${HYDRA_HOST_FILE} \
     && alias pip='pip3' \
