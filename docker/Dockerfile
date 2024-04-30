@@ -1,5 +1,4 @@
-ARG VERSION
-FROM ngen-${VERSION} as ngen
+FROM ngen:latest as ngen
 
 ARG DATASET_DIRECTORIES
 WORKDIR /ngen

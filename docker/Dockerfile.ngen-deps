@@ -87,7 +87,7 @@ ENV BOOST_ROOT=/ngen/boost
 
 WORKDIR $BOOST_ROOT
 COPY --from=downloads /tmp/downloads/boost.tar.bz2 .
-RUN tar -xjf boost.tar.bz2 \
+RUN tar --strip-components=1 -xjf boost.tar.bz2 \
     && rm boost.tar.bz2 
 
 RUN touch ${HYDRA_HOST_FILE} \
