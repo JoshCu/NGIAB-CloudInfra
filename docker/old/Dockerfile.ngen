@@ -29,7 +29,7 @@ RUN if [ -n "$COMMIT"]; then \
     fi \
     && git submodule update --init --depth 1 test/googletest \
     && git submodule update --init --recursive --depth 1
-    
+
 FROM clone_ngen as build_ngen
 COPY --chown=root --from=t-route:latest /ngen/t-route/wheels /tmp/t-route-wheels
 COPY --chown=root --from=t-route:latest /ngen/t-route/requirements.txt /tmp/t-route-requirements.txt
@@ -63,6 +63,7 @@ ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_SQLITE:BOOL=${NGEN_WITH_SQLITE} \
     -DNGEN_WITH_UDUNITS:BOOL=${NGEN_UDUNITS_ACTIVE} \
     -DUDUNITS_QUIET:BOOL=${NGEN_UDUNITS_QUIET} \
+    -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_INSTALL_PREFIX=. "
 
 
