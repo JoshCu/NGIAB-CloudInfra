@@ -163,6 +163,7 @@ else
     IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-x86
 fi
 
+IMAGE_NAME=ngiab_local
 
 # Model run options
 echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
