@@ -440,6 +440,19 @@ namespace realization {
 
                 // If the directory could be found and opened, we can go ahead and iterate
                 if (directory != nullptr) {
+                    // check if directory + file_pattern is a file before attempting to iterate
+                    struct stat st;
+                    if (stat((path + filepattern).c_str(), &st) == 0) {
+                        if (S_ISREG(st.st_mode)) {
+                            return forcing_params(
+                                path + filepattern,
+                                provider,
+                                simulation_time_config.start_time,
+                                simulation_time_config.end_time
+                            );
+                        }
+                    }
+
                     bool match;
                     while ((entry = readdir(directory))) {
                         match = std::regex_match(entry->d_name, pattern);

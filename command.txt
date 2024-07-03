@@ -1,0 +1,2 @@
+bash-5.1# perf script > out.perf && FlameGraph/stackcollapse-perf.pl out.perf > out.folded && FlameGraph/flamegraph.pl out.folded > kernelboost.svg
+bash-5.1# perf record -F 999 -g --call-graph dwarf /dmod/bin/ngen-serial ./config/wb-479197_subset.gpkg all ./config/wb-479197_subset.gpkg all ./config/realization.json

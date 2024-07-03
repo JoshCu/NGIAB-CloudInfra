@@ -173,6 +173,7 @@ COPY --chown=root --from=build_troute /ngen/t-route/requirements.txt /tmp/t-rout
 
 
 WORKDIR /ngen/ngen
+
 RUN if [ "${NGEN_ACTIVATE_PYTHON}" == "ON" ]; then \
     pip3 install -r extern/test_bmi_py/requirements.txt; \
     if [ "${NGEN_ROUTING_ACTIVE}" == "ON" ] ; then \
@@ -182,14 +183,31 @@ RUN if [ "${NGEN_ACTIVATE_PYTHON}" == "ON" ]; then \
     fi; \
     fi 
 
-RUN if [ "${NGEN_ACTIVATE_PYTHON}" == "ON" ]; then \
-    chgrp -R root /usr/local/lib*/python3.* ; \
-    chmod -R g+sw /usr/local/lib*/python3.* ; \
-    fi 
 RUN if [ "${NGEN_ROUTING_ACTIVE}" == "ON" ]; then \
     # These packages install command line tools, which try to go in /usr/local/bin \
     pip3 install pyarrow pyproj fiona; \
     fi
+
+RUN sed -i 's/#define CFE_DEBUG 1/#define CFE_DEBUG 0/g' extern/cfe/cfe/src/bmi_cfe.c
+#COPY bmi_cfe.c extern/cfe/cfe/src/bmi_cfe.c
+COPY Formulation_Manager.hpp include/realizations/catchment/Formulation_Manager.hpp
+COPY NGen.cpp src/NGen.cpp
+#RUN sed -i 's/std::regex/boost::regex/g' include/realizations/catchment/Formulation_Manager.hpp
+
+# RUN sed -i 's|#include <regex>|#include <re2/re2.h>|g' include/realizations/catchment/Formulation_Manager.hpp
+# RUN sed -i 's/std::regex pattern(filepattern);/RE2 pattern(filepattern);/g' include/realizations/catchment/Formulation_Manager.hpp
+# RUN sed -i 's/std::regex_match/RE2::FullMatch/g' include/realizations/catchment/Formulation_Manager.hpp
+
+# RUN dnf install -y epel-release
+# RUN dnf install -y re2-devel
+
+# COPY CMakeLists.txt CMakeLists.txt
+# ENV RE2_DIR=/usr/lib64/cmake/re2
+
+# RUN if [ "${NGEN_ACTIVATE_PYTHON}" == "ON" ]; then \
+#     chgrp -R root /usr/local/lib*/python3.* ; \
+#     chmod -R g+sw /usr/local/lib*/python3.* ; \
+#     fi 
 
 ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_NETCDF:BOOL=${NGEN_NETCDF_ACTIVE} \
@@ -200,6 +218,8 @@ ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_SQLITE:BOOL=${NGEN_WITH_SQLITE} \
     -DNGEN_WITH_UDUNITS:BOOL=${NGEN_UDUNITS_ACTIVE} \
     -DUDUNITS_QUIET:BOOL=${NGEN_UDUNITS_QUIET} \
+    -DNGEN_WITH_TESTS:BOOL=OFF \
+    #    -DNGEN_QUIET:BOOL=ON \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_INSTALL_PREFIX=. "
 
@@ -220,16 +240,16 @@ WORKDIR /ngen/ngen
 # run the serial tests \
 # && cmake --build cmake_build_serial --target test \ 
 # have to remove the output from the previous tests runs for routing test to be run again... \
-RUN rm -f ./test/data/routing/*.parquet \
-    # run the parallel tests \
-    # && cmake --build cmake_build_parallel --target test \
-    # clean these up again... \
-    && rm -f ./test/data/routing/*.parquet \
-    #Run the MPI tests manually, they don't play well with ctest and are skipped in the above tests \
-    && mpirun -n 2 cmake_build_parallel/test/test_remote_nexus \
-    && mpirun -n 3 cmake_build_parallel/test/test_remote_nexus \
-    && mpirun -n 4 cmake_build_parallel/test/test_remote_nexus \
-    && find cmake_build* -type f -name "*" ! \( -name "*.so" -o -name "ngen" -o -name "partitionGenerator" \) -exec rm {} + 
+# RUN rm -f ./test/data/routing/*.parquet \
+#     # run the parallel tests \
+#     # && cmake --build cmake_build_parallel --target test \
+#     # clean these up again... \
+#     # && rm -f ./test/data/routing/*.parquet \
+#     #Run the MPI tests manually, they don't play well with ctest and are skipped in the above tests \
+#     && mpirun -n 2 cmake_build_parallel/test/test_remote_nexus \
+#     && mpirun -n 3 cmake_build_parallel/test/test_remote_nexus \
+#     && mpirun -n 4 cmake_build_parallel/test/test_remote_nexus \
+#     && find cmake_build* -type f -name "*" ! \( -name "*.so" -o -name "ngen" -o -name "partitionGenerator" \) -exec rm {} + 
 
 FROM build_ngen as ngen
 # Remove the boost headers now that ngen is compiled; also update path and make sure dataset directory is there
@@ -270,8 +290,10 @@ COPY --chown=root --from=ngen /usr/ /usr/
 ########################################Relink the files########################################################
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
 
+RUN wget https://raw.githubusercontent.com/JoshCu/t-route/parallel_csv_to_parquet/src/troute-network/troute/AbstractNetwork.py
+RUN cp AbstractNetwork.py /usr/local/lib64/python3.9/site-packages/troute/AbstractNetwork.py
 COPY   HelloNGEN.sh /ngen/HelloNGEN.sh
-RUN chown -R root /dmod /ngen /root
+#RUN chown -R root /dmod /ngen /root
 RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh /root
 #RUN rm -rf tmp var opt 
 WORKDIR /ngen
