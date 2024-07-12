@@ -26,9 +26,10 @@ jobs:
     - name: Build and push
       uses: docker/build-push-action@v2
       with:
-        context: .
+        context: ./docker
+        file: ./docker/Dockerfile
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          ${{ secrets.DOCKERHUB_USERNAME }}/ngiab:latest
-          ${{ secrets.DOCKERHUB_USERNAME }}/ngiab:${{ github.event.release.tag_name }}
+          ${{ secrets.DOCKERHUB_USERNAME }}/ngen:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}
