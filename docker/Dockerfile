@@ -93,7 +93,7 @@ RUN cmake -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=O
     cmake -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=ON && \
     cmake --build cmake_build_parallel --target all -j $(nproc)
 
-FROM ngen_build AS final
+FROM ngen_build AS restructure_files
 # Setup final directories and permissions
 RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin && \
     cp -a ./extern/*/cmake_build/*.so* /dmod/shared_libs/. || true && \
@@ -104,15 +104,33 @@ RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin &&
     cd /dmod/bin && \
     (stat ngen-parallel && ln -s ngen-parallel ngen) || (stat ngen-serial && ln -s ngen-serial ngen)
 
+FROM rockylinux:9.1 AS final
+
+# Install only necessary runtime dependencies
+RUN dnf update -y && \
+    dnf install -y epel-release && \
+    dnf config-manager --set-enabled crb && \
+    dnf install -y \
+    libgfortran sqlite python3 gdal \
+    bzip2 expat udunits2 zlib python3-pip \
+    mpich hdf5 netcdf netcdf-fortran netcdf-cxx && \
+    dnf clean all 
+
+# Copy necessary files from build stages
+COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
+COPY --from=restructure_files /dmod /dmod
+COPY --from=restructure_files /ngen/t-route/src/troute-*/dist/*.whl /tmp/
+
+# Without this specific netCDF4 version, routing doesn't work via ngen
+# but it works fine if you manually run the python -m nwm_routing etc
+# Install T-Route wheels and other Python dependencies
+RUN pip3 install --no-cache-dir /tmp/*.whl netCDF4==1.6.3 && \
+    rm -rf /tmp/*.whl
+
 # Set up library path
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
 
-# Without this, routing doesn't work via ngen
-# but it works fine if you manually run the python -m nwm_routing etc
-RUN pip install netCDF4==1.6.3
-
-# Copy HelloNGEN.sh script
-COPY HelloNGEN.sh /ngen/HelloNGEN.sh
+# Set permissions
 RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh
 
 WORKDIR /ngen
