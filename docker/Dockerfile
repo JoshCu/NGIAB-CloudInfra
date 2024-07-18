@@ -1,16 +1,6 @@
 FROM rockylinux:9.1 AS base
 
-ENV NGEN_ACTIVATE_PYTHON="ON" \
-    NGEN_ACTIVATE_C="ON" \
-    NGEN_ACTIVATE_FORTRAN="ON" \
-    NGEN_NETCDF_ACTIVE="ON" \
-    NGEN_ROUTING_ACTIVE="ON" \
-    NGEN_WITH_SQLITE="ON" \
-    NGEN_UDUNITS_ACTIVE="ON" \
-    NGEN_UDUNITS_QUIET="ON" \
-    BUILD_NGEN_SERIAL="true" \
-    BUILD_NGEN_PARALLEL="true" \
-    BOOST_ROOT=/ngen/boost
+ENV BOOST_ROOT=/ngen/boost
 
 # Install system dependencies
 RUN dnf update -y && \
@@ -60,7 +50,7 @@ RUN git clone --single-branch --branch master https://github.com/NOAA-OWP/ngen.g
     cd ngen && \
     git submodule update --init --recursive --depth 1
 
-RUN cd /ngen/ngen/extern && rm -rf pybind11 && git clone https://github.com/pybind/pybind11.git && cd pybind11 && git checkout v2.11.0
+RUN cd /ngen/ngen/extern && rm -rf pybind11 && git clone https://github.com/pybind/pybind11.git && cd pybind11 && git checkout v2.12.0
 FROM ngen_clone AS ngen_build
 
 ENV PATH=${PATH}:/usr/lib64/mpich/bin
@@ -73,14 +63,14 @@ RUN pip3 install /ngen/t-route/src/troute-*/dist/*.whl
 # PATCH
 # Define common build arguments
 ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
-    -DNGEN_WITH_NETCDF:BOOL=${NGEN_NETCDF_ACTIVE} \
-    -DNGEN_WITH_BMI_C:BOOL=${NGEN_ACTIVATE_C} \
-    -DNGEN_WITH_BMI_FORTRAN:BOOL=${NGEN_ACTIVATE_FORTRAN} \
-    -DNGEN_WITH_PYTHON:BOOL=${NGEN_ACTIVATE_PYTHON} \
-    -DNGEN_WITH_ROUTING:BOOL=${NGEN_ROUTING_ACTIVE} \
-    -DNGEN_WITH_SQLITE:BOOL=${NGEN_WITH_SQLITE} \
-    -DNGEN_WITH_UDUNITS:BOOL=${NGEN_UDUNITS_ACTIVE} \
-    -DUDUNITS_QUIET:BOOL=${NGEN_UDUNITS_QUIET} \
+    -DNGEN_WITH_NETCDF:BOOL=ON \
+    -DNGEN_WITH_BMI_C:BOOL=ON \
+    -DNGEN_WITH_BMI_FORTRAN:BOOL=ON \
+    -DNGEN_WITH_PYTHON:BOOL=ON \
+    -DNGEN_WITH_ROUTING:BOOL=ON \
+    -DNGEN_WITH_SQLITE:BOOL=ON \
+    -DNGEN_WITH_UDUNITS:BOOL=ON \
+    -DUDUNITS_QUIET:BOOL=ON \
     -DNGEN_WITH_TESTS:BOOL=OFF \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_INSTALL_PREFIX=."
