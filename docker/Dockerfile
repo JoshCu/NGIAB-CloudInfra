@@ -17,8 +17,8 @@ RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
-    sudo gcc gcc-c++ make cmake tar git gcc-gfortran libgfortran sqlite sqlite-devel \
-    python3 python3-devel python3-pip gdal gdal-devel \
+    sudo vim gcc gcc-c++ make cmake ninja-build tar git gcc-gfortran libgfortran sqlite sqlite-devel \
+    python3 python3-devel python3-pip python3-numpy gdal gdal-devel \
     bzip2 expat expat-devel flex bison udunits2 udunits2-devel zlib-devel \
     wget mpich mpich-devel hdf5 hdf5-devel netcdf netcdf-devel \
     netcdf-fortran netcdf-fortran-devel netcdf-cxx netcdf-cxx-devel && \
@@ -43,26 +43,24 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 RUN pip3 install --upgrade pip
 RUN pip install wheel build
-RUN git clone --single-branch --branch master https://github.com/NOAA-OWP/t-route.git && \
+RUN git clone --depth 1 --single-branch --branch master https://github.com/NOAA-OWP/t-route.git && \
     cd t-route && \
-    git checkout e7eba47dc32ca64b8b087bac14b3c1bb4145fc65 && \
     git submodule update --init --depth 1 && \
     pip3 install -r requirements.txt && \
-    ./compiler.sh && \
+    ./compiler.sh no-e && \
     cd src/troute-network && python3 setup.py --use-cython bdist_wheel && \
     cd ../troute-routing && python3 setup.py --use-cython bdist_wheel && \
     cd ../troute-config && python3 -m build . && \
-    cd ../troute-nwm && python3 setup.py bdist_wheel
+    cd ../troute-nwm && python3 -m build .
 
 FROM troute_build AS ngen_clone
 # Clone NGen
 WORKDIR /ngen
 RUN git clone --single-branch --branch master https://github.com/NOAA-OWP/ngen.git && \
     cd ngen && \
-    git checkout f91e2ea && \
     git submodule update --init --recursive --depth 1
 
-RUN dnf install -y vim
+RUN cd /ngen/ngen/extern && rm -rf pybind11 && git clone https://github.com/pybind/pybind11.git && cd pybind11 && git checkout v2.11.0
 FROM ngen_clone AS ngen_build
 
 ENV PATH=${PATH}:/usr/lib64/mpich/bin
@@ -72,7 +70,7 @@ WORKDIR /ngen/ngen
 # Install T-Route wheels
 RUN pip3 install /ngen/t-route/src/troute-*/dist/*.whl
 
-
+# PATCH
 # Define common build arguments
 ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_NETCDF:BOOL=${NGEN_NETCDF_ACTIVE} \
@@ -88,10 +86,10 @@ ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DCMAKE_INSTALL_PREFIX=."
 
 # Build NGen (serial and parallel)
-RUN cmake -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=OFF && \
-    cmake --build cmake_build_serial --target all -j $(nproc) && \
-    cmake -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=ON && \
-    cmake --build cmake_build_parallel --target all -j $(nproc)
+RUN cmake -G Ninja -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=OFF && \
+    cmake --build cmake_build_serial --target all -- -j $(nproc)
+RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=ON && \
+    cmake --build cmake_build_parallel --target all -- -j $(nproc)
 
 FROM ngen_build AS restructure_files
 # Setup final directories and permissions
@@ -111,10 +109,11 @@ RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
-    libgfortran sqlite python3 gdal \
+    vim libgfortran sqlite python3 gdal \
     bzip2 expat udunits2 zlib python3-pip \
-    mpich hdf5 netcdf netcdf-fortran netcdf-cxx && \
-    dnf clean all 
+    mpich hdf5 netcdf netcdf-fortran netcdf-cxx 
+#&& \
+#    dnf clean all 
 
 # Copy necessary files from build stages
 COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
@@ -124,11 +123,14 @@ COPY --from=restructure_files /ngen/t-route/src/troute-*/dist/*.whl /tmp/
 # Without this specific netCDF4 version, routing doesn't work via ngen
 # but it works fine if you manually run the python -m nwm_routing etc
 # Install T-Route wheels and other Python dependencies
-RUN pip3 install --no-cache-dir /tmp/*.whl netCDF4==1.6.3 && \
+RUN pip install --no-cache-dir /tmp/*.whl netCDF4==1.6.3 numpy==1.26.4 && \
     rm -rf /tmp/*.whl
 
 # Set up library path
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
+
+# Add mpirun to path
+ENV PATH=$PATH:/usr/lib64/mpich/bin
 
 # Set permissions
 RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh
