@@ -33,7 +33,7 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 RUN pip3 install --upgrade pip
 RUN pip install wheel build
-RUN git clone --depth 1 --single-branch --branch master https://github.com/NOAA-OWP/t-route.git && \
+RUN git clone --depth 1 --single-branch --branch remove_geopandas https://github.com/JoshCu/t-route.git && \
     cd t-route && \
     git submodule update --init --depth 1 && \
     pip3 install -r requirements.txt && \
@@ -91,6 +91,20 @@ RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin &&
     cp -a ./cmake_build_parallel/partitionGenerator /dmod/bin/partitionGenerator || true && \
     cd /dmod/bin && \
     (stat ngen-parallel && ln -s ngen-parallel ngen) || (stat ngen-serial && ln -s ngen-serial ngen)
+
+FROM restructure_files AS dev
+
+COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
+# Set up library path
+RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
+# Add mpirun to path
+ENV PATH=$PATH:/usr/lib64/mpich/bin
+# Set permissions
+RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh
+RUN mv /ngen/ngen /ngen/ngen_src
+WORKDIR /ngen
+ENTRYPOINT ["./HelloNGEN.sh"]
+
 
 FROM rockylinux:9.1 AS final
 

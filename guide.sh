@@ -165,34 +165,51 @@ else
     IMAGE_NAME=awiciroh/ciroh-ngen-image:latest-x86
 fi
 
-# Model run options
-echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
-options=("Run NextGen using existing local docker image" "Run NextGen after updating to latest docker image" "Exit")
+# ask the user if they want to run ngiab_dev ngiab_prod or public image
+
+echo -e "${UYellow}Which image do you want to run? (type a number): ${Color_Off}"
+
+options=("local dev image" "local production image" "latest public image")
 select option in "${options[@]}"; do
     case $option in
-        "Run NextGen using existing local docker image")
-            echo "running the model"
+        "local dev image")
+            IMAGE_NAME=ngiab_dev
             break
             ;;
-        "Run NextGen after updating to latest docker image")
-            echo "pulling container and running the model"
-            docker pull $IMAGE_NAME
+        "local production image")
+            IMAGE_NAME=ngiab_prod
             break
             ;;
-        Exit)
-            echo "Have a nice day!"
-            exit 0
+        "latest public image")
+        echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
+        options=("use version saved locally" "download latest")
+        select option in "${options[@]}"; do
+            case $option in
+                "use version saved locally")
+                    break
+                    ;;
+                "download latest")
+                    docker pull $IMAGE_NAME
+                    break
+                    ;;
+                *) echo "Invalid option $REPLY, 1 to continue with existing local image, 2 to update"
+                    ;;
+            esac
+        done
+            break
             ;;
-        *) echo "Invalid option $REPLY, 1 to continue with existing local image, 2 to update and run, and 3 to exit"
+        *) echo "Invalid option $REPLY, 1 for local dev image, 2 for local production image, and 3 for latest public image"
             ;;
     esac
 done
 
 
+# echo the current image name
+echo -e "Current Docker image: ${BGreen}$IMAGE_NAME${Color_Off}\n"
+
 echo -e "\nRunning NextGen docker container..."
 echo -e "Mounting local host directory $HOST_DATA_PATH to /ngen/ngen/data within the container."
 docker run --rm -it -v "$HOST_DATA_PATH:/ngen/ngen/data" "$IMAGE_NAME" /ngen/ngen/data/
-
 # Final output count
 Final_Outputs_Count=$(find "$HOST_DATA_PATH/outputs/" -type f | wc -l)
 echo -e "$Final_Outputs_Count new outputs created."

@@ -1,0 +1,1 @@
+docker build -t ngiab_dev -f docker/Dockerfile docker/ --target dev

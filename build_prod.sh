@@ -1,0 +1,1 @@
+docker build -t ngiab_prod -f docker/Dockerfile docker/
