@@ -11,8 +11,7 @@ RUN dnf update -y && \
     python3 python3-devel python3-pip python3-numpy gdal gdal-devel \
     bzip2 expat expat-devel flex bison udunits2 udunits2-devel zlib-devel \
     wget mpich mpich-devel hdf5 hdf5-devel netcdf netcdf-devel \
-    netcdf-fortran netcdf-fortran-devel netcdf-cxx netcdf-cxx-devel && \
-    dnf clean all
+    netcdf-fortran netcdf-fortran-devel netcdf-cxx netcdf-cxx-devel
 
 FROM base AS boost_build
 RUN wget https://archives.boost.io/release/1.79.0/source/boost_1_79_0.tar.gz
@@ -44,12 +43,13 @@ RUN git clone --depth 1 --single-branch --branch master https://github.com/NOAA-
     cd ../troute-nwm && python3 -m build .
 
 FROM troute_build AS ngen_clone
-# Clone NGen
+# Clone ngen
 WORKDIR /ngen
 RUN git clone --single-branch --branch master https://github.com/NOAA-OWP/ngen.git && \
     cd ngen && \
     git submodule update --init --recursive --depth 1
 
+# Patch pybind issue "issues with using global pip to install packages"
 RUN cd /ngen/ngen/extern && rm -rf pybind11 && git clone https://github.com/pybind/pybind11.git && cd pybind11 && git checkout v2.12.0
 FROM ngen_clone AS ngen_build
 
@@ -101,9 +101,8 @@ RUN dnf update -y && \
     dnf install -y \
     vim libgfortran sqlite python3 gdal \
     bzip2 expat udunits2 zlib python3-pip \
-    mpich hdf5 netcdf netcdf-fortran netcdf-cxx 
-#&& \
-#    dnf clean all 
+    mpich hdf5 netcdf netcdf-fortran netcdf-cxx && \
+    dnf clean all 
 
 # Copy necessary files from build stages
 COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
