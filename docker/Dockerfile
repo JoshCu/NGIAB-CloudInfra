@@ -1,6 +1,9 @@
 FROM rockylinux:9.1 AS base
+ENV TROUTE_REPO=JoshCu/t-route
+ENV TROUTE_BRANCH=geopackage_read_bugfix
+ENV NGEN_REPO=JoshCu/ngen
+ENV NGEN_BRANCH=datastream
 
-ENV BOOST_ROOT=/ngen/boost
 
 # Install system dependencies
 RUN dnf update -y && \
@@ -8,59 +11,74 @@ RUN dnf update -y && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
     sudo vim gcc gcc-c++ make cmake ninja-build tar git gcc-gfortran libgfortran sqlite sqlite-devel \
-    python3 python3-devel python3-pip python3-numpy gdal gdal-devel \
+    python3 python3-devel python3-pip gdal gdal-devel \
     bzip2 expat expat-devel flex bison udunits2 udunits2-devel zlib-devel \
     wget mpich mpich-devel hdf5 hdf5-devel netcdf netcdf-devel \
-    netcdf-fortran netcdf-fortran-devel netcdf-cxx netcdf-cxx-devel && \
-    dnf clean all
+    netcdf-fortran netcdf-fortran-devel netcdf-cxx netcdf-cxx-devel lld
+
+
 
 FROM base AS boost_build
 RUN wget https://archives.boost.io/release/1.79.0/source/boost_1_79_0.tar.gz
 RUN tar -xzf boost_1_79_0.tar.gz
 WORKDIR /boost_1_79_0
-RUN ./bootstrap.sh
-RUN ./b2 
-RUN ./b2 headers
+RUN ./bootstrap.sh && ./b2 && ./b2 headers
 ENV BOOST_ROOT=/boost_1_79_0
 
-FROM boost_build AS troute_build
-# Clone and build T-Route
+
+
+FROM boost_build AS troute_prebuild
 WORKDIR /ngen
-## troute looks for netcdf.mod in the wrong place unless we set this
+# troute looks for netcdf.mod in the wrong place unless we set this
 ENV FC=gfortran NETCDF=/usr/lib64/gfortran/modules/
-## it also tries to use python instead of python3
+# it also tries to use python instead of python3
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-RUN pip3 install --upgrade pip
-RUN pip install wheel build
-RUN git clone --depth 1 --single-branch --branch remove_geopandas https://github.com/JoshCu/t-route.git && \
-    cd t-route && \
-    git submodule update --init --depth 1 && \
-    pip3 install -r requirements.txt && \
-    ./compiler.sh no-e && \
-    cd src/troute-network && python3 setup.py --use-cython bdist_wheel && \
-    cd ../troute-routing && python3 setup.py --use-cython bdist_wheel && \
-    cd ../troute-config && python3 -m build . && \
-    cd ../troute-nwm && python3 -m build .
+WORKDIR /ngen/
+RUN pip3 install uv && uv venv
+ENV PATH="/ngen/.venv/bin:$PATH"
+# install requirements like this so the troute clone can run in parallel with ngen download and build
+RUN uv pip install -r https://raw.githubusercontent.com/$TROUTE_REPO/refs/heads/$TROUTE_BRANCH/requirements.txt
+# this installs numpy 1.26.4 but the produced wheels install a non pinned version
 
-FROM troute_build AS ngen_clone
-# Clone NGen
+
+
+FROM troute_prebuild AS troute_build
+WORKDIR /ngen/t-route
+RUN git clone --depth 1 --single-branch --branch $TROUTE_BRANCH https://github.com/$TROUTE_REPO.git .
+# build and save a link to the repo used
+RUN echo $(git remote get-url origin | sed 's/\.git$//' | awk '{print $0 "/tree/" }' | tr -d '\n' && git rev-parse HEAD) >> /tmp/troute_url
+RUN git submodule update --init --depth 1
+RUN uv pip install build wheel
+
+# disable everything except the kernel builds
+RUN sed -i 's/build_[a-z]*=/#&/' compiler.sh
+
+RUN ./compiler.sh no-e
+
+# install / build using UV because it's so much faster
+# no build isolation needed because of cython namespace issues
+RUN uv pip install --config-setting='--build-option=--use-cython' src/troute-network/
+RUN uv build --wheel --config-setting='--build-option=--use-cython' src/troute-network/ 
+RUN uv pip install --no-build-isolation --config-setting='--build-option=--use-cython' src/troute-routing/
+RUN uv build --wheel --no-build-isolation --config-setting='--build-option=--use-cython' src/troute-routing/
+RUN uv build --wheel --no-build-isolation src/troute-config/
+RUN uv build --wheel --no-build-isolation src/troute-nwm/
+
+FROM troute_prebuild AS ngen_clone
 WORKDIR /ngen
-RUN git clone --single-branch --branch master https://github.com/NOAA-OWP/ngen.git && \
+RUN git clone --single-branch --branch $NGEN_BRANCH https://github.com/$NGEN_REPO.git && \
     cd ngen && \
     git submodule update --init --recursive --depth 1
 
-RUN cd /ngen/ngen/extern && rm -rf pybind11 && git clone https://github.com/pybind/pybind11.git && cd pybind11 && git checkout v2.12.0
-FROM ngen_clone AS ngen_build
 
+
+FROM ngen_clone AS ngen_build
 ENV PATH=${PATH}:/usr/lib64/mpich/bin
 
 WORKDIR /ngen/ngen
+RUN echo $(git remote get-url origin | sed 's/\.git$//' | awk '{print $0 "/tree/" }' | tr -d '\n' && git rev-parse HEAD) >> /tmp/ngen_url
 
-# Install T-Route wheels
-RUN pip3 install /ngen/t-route/src/troute-*/dist/*.whl
-
-# PATCH
 # Define common build arguments
 ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_NETCDF:BOOL=ON \
@@ -73,13 +91,28 @@ ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DUDUNITS_QUIET:BOOL=ON \
     -DNGEN_WITH_TESTS:BOOL=OFF \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_INSTALL_PREFIX=."
+    -DCMAKE_INSTALL_PREFIX=. \
+    -DCMAKE_CXX_FLAGS='-fuse-ld=lld'"
+    # lld is the linker, it's faster than the default
 
-# Build NGen (serial and parallel)
+
+# Build Ngen serial
 RUN cmake -G Ninja -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=OFF && \
     cmake --build cmake_build_serial --target all -- -j $(nproc)
-RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=ON && \
+
+ARG MPI_BUILD_ARGS="-DNGEN_WITH_MPI:BOOL=ON \
+    -DNetCDF_ROOT=/usr/lib64/mpich \
+    -DCMAKE_PREFIX_PATH=/usr/lib64/mpich \
+    -DCMAKE_LIBRARY_PATH=/usr/lib64/mpich/lib \
+    -DNetCDF_CXX_INCLUDE_DIR=/usr/include/mpich-x86_64 \
+    -DNetCDF_INCLUDE_DIR=/usr/include/mpich-x86_64"
+
+# Install the mpi enabled netcdf library and build Ngen parallel with it
+RUN dnf install -y netcdf-cxx4-mpich-devel
+RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} ${MPI_BUILD_ARGS} && \
     cmake --build cmake_build_parallel --target all -- -j $(nproc)
+
+
 
 FROM ngen_build AS restructure_files
 # Setup final directories and permissions
@@ -91,6 +124,8 @@ RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin &&
     cp -a ./cmake_build_parallel/partitionGenerator /dmod/bin/partitionGenerator || true && \
     cd /dmod/bin && \
     (stat ngen-parallel && ln -s ngen-parallel ngen) || (stat ngen-serial && ln -s ngen-serial ngen)
+
+
 
 FROM restructure_files AS dev
 
@@ -106,40 +141,52 @@ WORKDIR /ngen
 ENTRYPOINT ["./HelloNGEN.sh"]
 
 
-FROM rockylinux:9.1 AS final
 
+FROM rockylinux:9.1 AS final
 # Install only necessary runtime dependencies
 RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
-    vim libgfortran sqlite python3 gdal \
-    bzip2 expat udunits2 zlib python3-pip \
-    mpich hdf5 netcdf netcdf-fortran netcdf-cxx 
-#&& \
-#    dnf clean all 
+    vim libgfortran sqlite gdal \
+    bzip2 expat udunits2 zlib \
+    mpich hdf5 netcdf netcdf-fortran netcdf-cxx netcdf-cxx4-mpich && \
+    dnf clean all
+
+WORKDIR /ngen
 
 # Copy necessary files from build stages
 COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
 COPY --from=restructure_files /dmod /dmod
-COPY --from=restructure_files /ngen/t-route/src/troute-*/dist/*.whl /tmp/
+COPY --from=troute_build /ngen/t-route/src/troute-*/dist/*.whl /tmp/
 
-# Without this specific netCDF4 version, routing doesn't work via ngen
-# but it works fine if you manually run the python -m nwm_routing etc
-# Install T-Route wheels and other Python dependencies
-RUN pip install --no-cache-dir /tmp/*.whl netCDF4==1.6.3 numpy==1.26.4 && \
-    rm -rf /tmp/*.whl
+RUN ln -s /dmod/bin/ngen /usr/local/bin/ngen
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN uv self update && uv venv && \
+    uv pip install --no-cache-dir /tmp/*.whl netCDF4==1.6.3
+# Clean up some stuff, this doesn't make the image any smaller
+RUN rm -rf /tmp/*.whl
+# DONT ADD THE VENV TO THE PATH YET
 
 # Set up library path
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
 
 # Add mpirun to path
 ENV PATH=$PATH:/usr/lib64/mpich/bin
-
-# Set permissions
 RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh
 
-WORKDIR /ngen
+# Only here after everything else is done will the ngen binary work and provide --info
+#                                                             This mess is parsing the version number
+RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | cut -d ':' -f 2 | uniq | xargs)
+
+# now that the only version of numpy is the one that NGen expects, 
+# we can install add the venv to the path so ngen can find it
+ENV PATH="/ngen/.venv/bin:${PATH}"
+
+## add some metadata to the image
+COPY --from=troute_build /tmp/troute_url /ngen/troute_url
+COPY --from=ngen_build /tmp/ngen_url /ngen/ngen_url
 
 ENTRYPOINT ["./HelloNGEN.sh"]
-CMD [""]
