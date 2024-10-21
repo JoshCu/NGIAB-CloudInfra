@@ -1,11 +1,11 @@
 FROM rockylinux:9.1 AS base
-ENV TROUTE_REPO=JoshCu/t-route
-ENV TROUTE_BRANCH=geopackage_read_bugfix
-ENV NGEN_REPO=JoshCu/ngen
-ENV NGEN_BRANCH=datastream
-
+ENV TROUTE_REPO=CIROH-UA/t-route
+ENV TROUTE_BRANCH=no-fiona
+ENV NGEN_REPO=CIROH-UA/ngen
+ENV NGEN_BRANCH=main
 
 # Install system dependencies
+RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
 RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
@@ -103,13 +103,15 @@ RUN cmake -G Ninja -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_M
 ARG MPI_BUILD_ARGS="-DNGEN_WITH_MPI:BOOL=ON \
     -DNetCDF_ROOT=/usr/lib64/mpich \
     -DCMAKE_PREFIX_PATH=/usr/lib64/mpich \
-    -DCMAKE_LIBRARY_PATH=/usr/lib64/mpich/lib \
-    -DNetCDF_CXX_INCLUDE_DIR=/usr/include/mpich-x86_64 \
-    -DNetCDF_INCLUDE_DIR=/usr/include/mpich-x86_64"
+    -DCMAKE_LIBRARY_PATH=/usr/lib64/mpich/lib"
+    # the two in the command below can't be here because the $() isn't evaulated properly
+    
 
 # Install the mpi enabled netcdf library and build Ngen parallel with it
 RUN dnf install -y netcdf-cxx4-mpich-devel
-RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} ${MPI_BUILD_ARGS} && \
+RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} ${MPI_BUILD_ARGS} \
+    -DNetCDF_CXX_INCLUDE_DIR=/usr/include/mpich-$(arch) \
+    -DNetCDF_INCLUDE_DIR=/usr/include/mpich-$(arch) && \
     cmake --build cmake_build_parallel --target all -- -j $(nproc)
 
 
@@ -144,6 +146,7 @@ ENTRYPOINT ["./HelloNGEN.sh"]
 
 FROM rockylinux:9.1 AS final
 # Install only necessary runtime dependencies
+RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
 RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
@@ -182,7 +185,7 @@ RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh
 RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | cut -d ':' -f 2 | uniq | xargs)
 
 # now that the only version of numpy is the one that NGen expects, 
-# we can install add the venv to the path so ngen can find it
+# we can add the venv to the path so ngen can find it
 ENV PATH="/ngen/.venv/bin:${PATH}"
 
 ## add some metadata to the image
