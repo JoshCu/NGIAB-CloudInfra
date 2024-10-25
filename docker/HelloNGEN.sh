@@ -46,7 +46,16 @@ echo -e "${CYAN}\e[4mFound these Realization files:${RESET}" && echo "$NGEN_REAL
 echo -e "\n"
 
 generate_partition() {
-  /dmod/bin/partitionGenerator "$1" "$2" "partitions_$3.json" "$3" '' ''
+    # Store the grep result (0 if "false" is found, 1 if not)
+    grep_result=$(grep "remotes_enabled" $4 | grep false | wc -l)
+    
+    if [ "$grep_result" -eq 0 ]; then
+        # Use the original partition generator
+        /dmod/bin/partitionGenerator "$1" "$2" "partitions_$3.json" "$3" '' ''
+    else
+        # Use the round-robin partitioning
+        python /dmod/utils/partitioning/round_robin_partioning.py -n $3 $1 partitions_$3.json
+    fi
 }
 
 if [ "$2" == "auto" ]
@@ -62,12 +71,13 @@ if [ "$2" == "auto" ]
     partitions=$(find . -name "*partitions_$procs.json")
     if [[ -z $partitions ]]; then
       echo "No partitions file found, generating..."
-      generate_partition "$selected_catchment" "$selected_nexus" "$procs"
+      generate_partition "$selected_catchment" "$selected_nexus" "$procs" "$selected_realization"
     else
       echo "Found paritions file! "$partitions
     fi
 
     mpirun -n $procs /dmod/bin/ngen-parallel $selected_catchment all $selected_nexus all $selected_realization $(pwd)/partitions_$procs.json
+
     echo "Run completed successfully, exiting, have a nice day!"
     exit 0
   else
@@ -88,11 +98,11 @@ select option in "${options[@]}"; do
 
       if [ "$option" == "Run NextGen model framework in parallel mode" ]; then
         procs=$(nproc)
-        num_catchments=$(find forcings -name *.csv | wc -l)
-        if [ $num_catchments -lt $procs ]; then
-                procs=$num_catchments
-        fi
-        generate_partition "$n1" "$n2" "$procs"
+        # num_catchments=$(find forcings -name *.csv | wc -l)
+        # if [ $num_catchments -lt $procs ]; then
+        #         procs=$num_catchments
+        # fi
+        generate_partition "$n1" "$n2" "$procs" "$n3"
         run_command="mpirun -n $procs /dmod/bin/ngen-parallel $n1 all $n2 all $n3 $(pwd)/partitions_$procs.json"
       else
         run_command="/dmod/bin/ngen-serial $n1 all $n2 all $n3"
