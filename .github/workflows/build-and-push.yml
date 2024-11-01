@@ -30,6 +30,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+    - name: Unlock keychain
+      run: security unlock-keychain -p ${{ secrets.mac_password }}
     - name: Login to DockerHub
       uses: docker/login-action@v3
       with:
