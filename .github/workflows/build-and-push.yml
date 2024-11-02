@@ -38,7 +38,7 @@ jobs:
         docker build -f ./docker/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/ngen:latest-amd64 ./docker
         docker build -f ./docker/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-amd64 ./docker
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/ngen:latest-amd64
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-arm64
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-amd64
   create-manifest:
     needs: [build-and-push-x64, build-and-push-arm64]
     runs-on: ubuntu-latest
