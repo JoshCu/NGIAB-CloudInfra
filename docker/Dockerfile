@@ -1,6 +1,6 @@
 FROM rockylinux:9.1 AS base
 ENV TROUTE_REPO=CIROH-UA/t-route
-ENV TROUTE_BRANCH=no-fiona
+ENV TROUTE_BRANCH=datastream
 ENV NGEN_REPO=joshcu/ngen
 ENV NGEN_BRANCH=datastream
 
