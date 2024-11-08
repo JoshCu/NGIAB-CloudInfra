@@ -16,7 +16,7 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     - name: Build and push X64
       run: |
-        sed -i s/@ngiab_dev/@ngiab_${{ github.event.release.tag_name }}/ ./docker/Dockerfile
+        sed -i "s/@ngiab_dev/@ngiab_$(echo ${{ github.event.release.tag_name }} | sed 's/\./\\./g')/g" ./docker/Dockerfile
         docker build -f ./docker/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-amd64 ./docker
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-amd64
 
@@ -34,7 +34,7 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     - name: Build and push ARM64
       run: |
-        sed -i s/@ngiab_dev/@ngiab_${{ github.event.release.tag_name }}/ ./docker/Dockerfile
+        sed -i .bak "s/@ngiab_dev/@ngiab_$(echo ${{ github.event.release.tag_name }} | sed 's/\./\\./g')/g" ./docker/Dockerfile
         docker build -f ./docker/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-arm64 ./docker
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/ngen:${{ github.event.release.tag_name }}-arm64
   create-manifest:
