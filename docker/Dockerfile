@@ -25,6 +25,12 @@ WORKDIR /boost_1_79_0
 RUN ./bootstrap.sh && ./b2 && ./b2 headers
 ENV BOOST_ROOT=/boost_1_79_0
 
+FROM base AS clone_lstm
+# Clone lstm
+## make sure clone isn't cached if repo is updated
+ADD https://api.github.com/repos/CIROH-UA/lstm/git/refs/heads/master /tmp/version.json
+RUN git clone --depth 1 --single-branch --branch master https://github.com/CIROH-UA/lstm.git
+
 
 
 FROM boost_build AS troute_prebuild
@@ -41,7 +47,11 @@ ENV PATH="/ngen/.venv/bin:$PATH"
 RUN uv pip install -r https://raw.githubusercontent.com/$TROUTE_REPO/refs/heads/$TROUTE_BRANCH/requirements.txt
 # this installs numpy 1.26.4 but the produced wheels install a non pinned version
 
-
+FROM troute_prebuild AS cargo_build
+# Install rust, cargo, and the timeseries merger
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN cargo install ts-merger
 
 FROM troute_prebuild AS troute_build
 WORKDIR /ngen/t-route
@@ -169,10 +179,11 @@ COPY --from=restructure_files /dmod /dmod
 COPY --from=troute_build /ngen/t-route/src/troute-*/dist/*.whl /tmp/
 
 RUN ln -s /dmod/bin/ngen /usr/local/bin/ngen
-
+ENV UV_INSTALL_DIR=/root/.cargo/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN uv self update && uv venv && \
+
+RUN uv venv && \
     uv pip install --no-cache-dir /tmp/*.whl netCDF4==1.6.3
 # Clean up some stuff, this doesn't make the image any smaller
 RUN rm -rf /tmp/*.whl
@@ -193,11 +204,23 @@ RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | 
 # we can add the venv to the path so ngen can find it
 ENV PATH="/ngen/.venv/bin:${PATH}"
 
+# Install rust, cargo, and the timeseries merger
+COPY --from=cargo_build /root/.cargo/bin/ts-merger /root/.cargo/bin
+#RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+#RUN cargo install ts-merger
+
+# Install lstm
+## make sure clone isn't cached if repo is updated
+COPY --from=clone_lstm /lstm /ngen/ngen/extern/lstm
+RUN uv pip install /ngen/ngen/extern/lstm
+
 ## add some metadata to the image
 COPY --from=troute_build /tmp/troute_url /ngen/troute_url
 COPY --from=ngen_build /tmp/ngen_url /ngen/ngen_url
 
 # for the remotes script
 RUN uv pip install polars
+
+RUN echo "export PS1='\u\[\033[01;32m\]@ngiab_dev\[\033[00m\] \[\033[01;35m\]\W\[\033[00m\]\$'" >> ~/.bashrc
 
 ENTRYPOINT ["./HelloNGEN.sh"]
