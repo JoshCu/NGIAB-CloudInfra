@@ -114,6 +114,7 @@ select option in "${options[@]}"; do
     "Run Bash shell")
       echo -e "${CYAN}Starting a shell, simply exit to stop the process.${RESET}"
       /bin/bash
+      exit 0
       ;;
     "Exit")
       exit 0
