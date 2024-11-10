@@ -204,23 +204,19 @@ RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | 
 # we can add the venv to the path so ngen can find it
 ENV PATH="/ngen/.venv/bin:${PATH}"
 
-# Install rust, cargo, and the timeseries merger
+# Copy the ts-merger binary for ngen no-remotes output
 COPY --from=cargo_build /root/.cargo/bin/ts-merger /root/.cargo/bin
-#RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-#RUN cargo install ts-merger
 
 # Install lstm
 ## make sure clone isn't cached if repo is updated
 COPY --from=clone_lstm /lstm /ngen/ngen/extern/lstm
-RUN uv pip install /ngen/ngen/extern/lstm
+RUN uv pip install --no-cache-dir /ngen/ngen/extern/lstm --extra-index-url https://download.pytorch.org/whl/cpu
 
 ## add some metadata to the image
 COPY --from=troute_build /tmp/troute_url /ngen/troute_url
 COPY --from=ngen_build /tmp/ngen_url /ngen/ngen_url
 
-# for the remotes script
-RUN uv pip install polars
 
-RUN echo "export PS1='\u\[\033[01;32m\]@ngiab_dev\[\033[00m\] \[\033[01;35m\]\W\[\033[00m\]\$'" >> ~/.bashrc
+RUN echo "export PS1='\u\[\033[01;32m\]@ngiab_dev\[\033[00m\]:\[\033[01;35m\]\W\[\033[00m\]\$ '" >> ~/.bashrc
 
 ENTRYPOINT ["./HelloNGEN.sh"]
