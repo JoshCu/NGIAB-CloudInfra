@@ -174,11 +174,9 @@ RUN dnf update -y && \
 WORKDIR /ngen
 
 # Copy necessary files from build stages
-COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
-COPY --from=restructure_files /dmod /dmod
+
 COPY --from=troute_build /ngen/t-route/src/troute-*/dist/*.whl /tmp/
 
-RUN ln -s /dmod/bin/ngen /usr/local/bin/ngen
 ENV UV_INSTALL_DIR=/root/.cargo/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -189,13 +187,14 @@ RUN uv venv && \
 RUN rm -rf /tmp/*.whl
 # DONT ADD THE VENV TO THE PATH YET
 
+COPY --from=restructure_files /dmod /dmod
+RUN ln -s /dmod/bin/ngen /usr/local/bin/ngen
 # Set up library path
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
 
 # Add mpirun to path
 ENV PATH=$PATH:/usr/lib64/mpich/bin
-RUN chmod a+x /dmod/bin/* /ngen/HelloNGEN.sh
-
+RUN chmod a+x /dmod/bin/*
 # Only here after everything else is done will the ngen binary work and provide --info
 #                                                             This mess is parsing the version number
 RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | cut -d ':' -f 2 | uniq | xargs)
@@ -215,6 +214,9 @@ RUN uv pip install --no-cache-dir /ngen/ngen/extern/lstm --extra-index-url https
 ## add some metadata to the image
 COPY --from=troute_build /tmp/troute_url /ngen/troute_url
 COPY --from=ngen_build /tmp/ngen_url /ngen/ngen_url
+
+COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
+RUN chmod a+x /ngen/HelloNGEN.sh
 
 
 RUN echo "export PS1='\u\[\033[01;32m\]@ngiab_dev\[\033[00m\]:\[\033[01;35m\]\W\[\033[00m\]\$ '" >> ~/.bashrc

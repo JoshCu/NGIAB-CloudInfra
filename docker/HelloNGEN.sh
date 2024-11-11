@@ -45,11 +45,12 @@ echo -e "\n"
 echo -e "${CYAN}\e[4mFound these Realization files:${RESET}" && echo "$NGEN_REALIZATIONS" || echo -e "${RED}No Realization files found.${RESET}"
 echo -e "\n"
 
+no_remotes=$(grep "remotes_enabled" $selected_realization | grep false | wc -l)
+
 generate_partition() {
-    # Store the grep result (0 if "false" is found, 1 if not)
-    grep_result=$(grep "remotes_enabled" $4 | grep false | wc -l)
+    # Store the grep result (0 if "false" is found, 1 if not)    
     
-    if [ "$grep_result" -eq 0 ]; then
+    if [ "$no_remotes" -eq 0 ]; then
         # Use the original partition generator
         /dmod/bin/partitionGenerator "$1" "$2" "partitions_$3.json" "$3" '' ''
     else
@@ -57,6 +58,14 @@ generate_partition() {
         python /dmod/utils/partitioning/round_robin_partioning.py -n $3 $1 partitions_$3.json
     fi
 }
+
+#sed '/^[[:space:]]*"routing":/,/^[[:space:]]*},/d' realization.json >> modified.json
+
+if [ "$no_remotes" -eq 1 ]; then
+        # Use the original partition generator
+        mv $selected_realization modified_noremote.json
+        sed '/^[[:space:]]*"routing":/,/^[[:space:]]*},/d' modified_noremote.json >> $selected_realization
+fi
 
 if [ "$2" == "auto" ]
   then
@@ -75,9 +84,25 @@ if [ "$2" == "auto" ]
     else
       echo "Found paritions file! "$partitions
     fi
-
+    rm -f /ngen/ngen/data/outputs/ngen/*.csv
     mpirun -n $procs /dmod/bin/ngen-parallel $selected_catchment all $selected_nexus all $selected_realization $(pwd)/partitions_$procs.json
-
+    #TODO run troute manually if remotes were disabled
+    if [ "$no_remotes" -eq 1 ]; then
+        # diff two files to check if routing is needed
+        routing_used=$(wc -l < "$selected_realization")
+        modified_lines=$(wc -l < "modified_noremote.json")
+        if [ "$routing_used" -ne "$modified_lines" ]; then
+            routing_used=1
+        else
+            routing_used=0
+        fi
+        rm $selected_realization
+        mv modified_noremote.json $selected_realization
+        ts-merger /ngen/ngen/data/outputs/ngen/ _output.csv nex-
+        if [ "$routing_used" -eq 1 ]; then
+            python -m nwm_routing -V4 -f /ngen/ngen/data/config/troute.yaml
+        fi
+    fi
     echo "Run completed successfully, exiting, have a nice day!"
     exit 0
   else
@@ -138,6 +163,25 @@ else
     time $run_command
 fi
 command_status=$?
+
+
+#TODO run troute manually if remotes were disabled
+if [ "$no_remotes" -eq 1 ]; then
+    # diff two files to check if routing is needed
+    routing_used=$(wc -l < "$selected_realization")
+    modified_lines=$(wc -l < "modified_noremote.json")
+    if [ "$routing_used" -ne "$modified_lines" ]; then
+        routing_used=1
+    else
+        routing_used=0
+    fi
+    rm $selected_realization
+    mv modified_noremote.json $selected_realization
+    ts-merger /ngen/ngen/data/outputs/ngen/ _output.csv nex-
+    if [ "$routing_used" -eq 1 ]; then
+        python -m nwm_routing -V4 -f /ngen/ngen/data/config/troute.yaml
+    fi
+fi
 
 # Set message color based on command status
 if [ $command_status -eq 0 ]; then
