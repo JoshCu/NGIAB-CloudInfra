@@ -51,6 +51,8 @@ FROM troute_prebuild AS cargo_build
 # Install rust, cargo, and the timeseries merger
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
+ADD https://api.github.com/repos/JoshCu/ts-merger/git/refs/heads/main /tmp/version.json
+
 RUN cargo install ts-merger
 
 FROM troute_prebuild AS troute_build
