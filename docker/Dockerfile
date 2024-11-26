@@ -1,7 +1,7 @@
 FROM rockylinux:9.1 AS base
 ENV TROUTE_REPO=CIROH-UA/t-route
 ENV TROUTE_BRANCH=datastream
-ENV NGEN_REPO=joshcu/ngen
+ENV NGEN_REPO=CIROH-UA/ngen
 ENV NGEN_BRANCH=datastream
 
 # Install system dependencies
@@ -24,13 +24,6 @@ RUN tar -xzf boost_1_79_0.tar.gz
 WORKDIR /boost_1_79_0
 RUN ./bootstrap.sh && ./b2 && ./b2 headers
 ENV BOOST_ROOT=/boost_1_79_0
-
-FROM base AS clone_lstm
-# Clone lstm
-## make sure clone isn't cached if repo is updated
-ADD https://api.github.com/repos/CIROH-UA/lstm/git/refs/heads/master /tmp/version.json
-RUN git clone --depth 1 --single-branch --branch master https://github.com/CIROH-UA/lstm.git
-
 
 
 FROM boost_build AS troute_prebuild
@@ -210,7 +203,7 @@ COPY --from=cargo_build /root/.cargo/bin/ts-merger /root/.cargo/bin
 
 # Install lstm
 ## make sure clone isn't cached if repo is updated
-COPY --from=clone_lstm /lstm /ngen/ngen/extern/lstm
+COPY --from=ngen_clone /ngen/ngen/extern/lstm/lstm /ngen/ngen/extern/lstm
 RUN uv pip install --no-cache-dir /ngen/ngen/extern/lstm --extra-index-url https://download.pytorch.org/whl/cpu
 
 ## add some metadata to the image
