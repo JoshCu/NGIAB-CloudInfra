@@ -4,21 +4,30 @@ ENV TROUTE_BRANCH=datastream
 ENV NGEN_REPO=CIROH-UA/ngen
 ENV NGEN_BRANCH=datastream
 
-# Install system dependencies
+# Install final dependencies to make sure ngen is build and deployed with matching versions
+# Needed here for build caching
 RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
 RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
-    sudo vim gcc gcc-c++ make cmake ninja-build tar git gcc-gfortran libgfortran sqlite sqlite-devel \
-    python3 python3-devel python3-pip gdal gdal-devel \
-    bzip2 expat expat-devel flex bison udunits2 udunits2-devel zlib-devel \
-    wget mpich mpich-devel hdf5 hdf5-devel netcdf netcdf-devel \
-    netcdf-fortran netcdf-fortran-devel netcdf-cxx netcdf-cxx-devel lld
+    vim libgfortran sqlite gdal \
+    bzip2 expat udunits2 zlib \
+    mpich hdf5 netcdf netcdf-fortran netcdf-cxx netcdf-cxx4-mpich
+
+
+FROM base AS build_base
+# no dnf update to keep devel packages consistent with versions installed in base
+RUN dnf install -y \
+    sudo  gcc gcc-c++ make cmake ninja-build tar git gcc-gfortran sqlite-devel \
+    python3 python3-devel python3-pip gdal-devel \
+    expat-devel flex bison udunits2-devel zlib-devel \
+    wget mpich-devel hdf5-devel netcdf-devel \
+    netcdf-fortran-devel netcdf-cxx-devel lld
 
 
 
-FROM base AS boost_build
+FROM build_base AS boost_build
 RUN wget https://archives.boost.io/release/1.79.0/source/boost_1_79_0.tar.gz
 RUN tar -xzf boost_1_79_0.tar.gz
 WORKDIR /boost_1_79_0
@@ -154,17 +163,8 @@ ENTRYPOINT ["./HelloNGEN.sh"]
 
 
 
-FROM rockylinux:9.1 AS final
-# Install only necessary runtime dependencies
-RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
-RUN dnf update -y && \
-    dnf install -y epel-release && \
-    dnf config-manager --set-enabled crb && \
-    dnf install -y \
-    vim libgfortran sqlite gdal \
-    bzip2 expat udunits2 zlib \
-    mpich hdf5 netcdf netcdf-fortran netcdf-cxx netcdf-cxx4-mpich && \
-    dnf clean all
+FROM base AS final
+
 
 WORKDIR /ngen
 
