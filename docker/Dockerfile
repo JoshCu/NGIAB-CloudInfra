@@ -11,7 +11,7 @@ RUN dnf update -y && \
     dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
-    vim libgfortran sqlite gdal \
+    vim libgfortran sqlite \
     bzip2 expat udunits2 zlib \
     mpich hdf5 netcdf netcdf-fortran netcdf-cxx netcdf-cxx4-mpich
 
@@ -20,7 +20,7 @@ FROM base AS build_base
 # no dnf update to keep devel packages consistent with versions installed in base
 RUN dnf install -y \
     sudo  gcc gcc-c++ make cmake ninja-build tar git gcc-gfortran sqlite-devel \
-    python3 python3-devel python3-pip gdal-devel \
+    python3 python3-devel python3-pip \
     expat-devel flex bison udunits2-devel zlib-devel \
     wget mpich-devel hdf5-devel netcdf-devel \
     netcdf-fortran-devel netcdf-cxx-devel lld
@@ -137,8 +137,9 @@ RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} ${MPI_BUILD
 FROM ngen_build AS restructure_files
 # Setup final directories and permissions
 RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin /dmod/utils && \
-    cp -a ./extern/*/cmake_build/*.so* /dmod/shared_libs/. || true && \
-    find ./extern/noah-owp-modular -type f -iname "*.TBL" -exec cp '{}' /dmod/datasets/static \; && \
+    shopt -s globstar && \
+    cp -a ./extern/**/cmake_build/*.so* /dmod/shared_libs/. || true && \
+    cp -a ./extern/noah-owp-modular/**/*.TBL /dmod/datasets/static && \
     cp -a ./cmake_build_parallel/ngen /dmod/bin/ngen-parallel || true && \
     cp -a ./cmake_build_serial/ngen /dmod/bin/ngen-serial || true && \
     cp -a ./cmake_build_parallel/partitionGenerator /dmod/bin/partitionGenerator || true && \
