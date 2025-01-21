@@ -59,12 +59,9 @@ generate_partition() {
     fi
 }
 
-#sed '/^[[:space:]]*"routing":/,/^[[:space:]]*},/d' realization.json >> modified.json
 
 if [ "$no_remotes" -eq 1 ]; then
-        # Use the original partition generator
-        mv $selected_realization modified_noremote.json
-        sed '/^[[:space:]]*"routing":/,/^[[:space:]]*},/d' modified_noremote.json >> $selected_realization
+        sed -i 's/"routing"/"routing_disabled"/g' $selected_realization
 fi
 
 if [ "$2" == "auto" ]
@@ -88,18 +85,11 @@ if [ "$2" == "auto" ]
     mpirun -n $procs /dmod/bin/ngen-parallel $selected_catchment all $selected_nexus all $selected_realization $(pwd)/partitions_$procs.json
     #TODO run troute manually if remotes were disabled
     if [ "$no_remotes" -eq 1 ]; then
-        # diff two files to check if routing is needed
-        routing_used=$(wc -l < "$selected_realization")
-        modified_lines=$(wc -l < "modified_noremote.json")
-        if [ "$routing_used" -ne "$modified_lines" ]; then
-            routing_used=1
-        else
-            routing_used=0
-        fi
-        rm $selected_realization
-        mv modified_noremote.json $selected_realization
+        grep "routing_disabled" $selected_realization >> /dev/null
+	routing_used=$?
+	sed -i 's/"routing_disabled"/"routing"/g' $selected_realization
         ts-merger /ngen/ngen/data/outputs/ngen/ _output.csv nex-
-        if [ "$routing_used" -eq 1 ]; then
+        if [ "$routing_used" -eq 0 ]; then
             python -m nwm_routing -V4 -f /ngen/ngen/data/config/troute.yaml
         fi
     fi
@@ -167,16 +157,9 @@ command_status=$?
 
 #TODO run troute manually if remotes were disabled
 if [ "$no_remotes" -eq 1 ]; then
-    # diff two files to check if routing is needed
-    routing_used=$(wc -l < "$selected_realization")
-    modified_lines=$(wc -l < "modified_noremote.json")
-    if [ "$routing_used" -ne "$modified_lines" ]; then
-        routing_used=1
-    else
-        routing_used=0
-    fi
-    rm $selected_realization
-    mv modified_noremote.json $selected_realization
+    grep "routing_disabled" $selected_realization >> /dev/null
+    routing_used=$?
+    sed -i 's/"routing_disabled"/"routing"/g' $selected_realization
     ts-merger /ngen/ngen/data/outputs/ngen/ _output.csv nex-
     if [ "$routing_used" -eq 1 ]; then
         python -m nwm_routing -V4 -f /ngen/ngen/data/config/troute.yaml
