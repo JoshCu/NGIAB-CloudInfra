@@ -75,7 +75,7 @@ RUN ./compiler.sh no-e
 # install / build using UV because it's so much faster
 # no build isolation needed because of cython namespace issues
 RUN uv pip install --config-setting='--build-option=--use-cython' src/troute-network/
-RUN uv build --wheel --config-setting='--build-option=--use-cython' src/troute-network/ 
+RUN uv build --wheel --config-setting='--build-option=--use-cython' src/troute-network/
 RUN uv pip install --no-build-isolation --config-setting='--build-option=--use-cython' src/troute-routing/
 RUN uv build --wheel --no-build-isolation --config-setting='--build-option=--use-cython' src/troute-routing/
 RUN uv build --wheel --no-build-isolation src/troute-config/
@@ -111,8 +111,7 @@ ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=. \
     -DCMAKE_CXX_FLAGS='-fuse-ld=lld'"
-    # lld is the linker, it's faster than the default
-
+# lld is the linker, it's faster than the default
 
 # Build Ngen serial
 RUN cmake -G Ninja -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=OFF && \
@@ -122,8 +121,8 @@ ARG MPI_BUILD_ARGS="-DNGEN_WITH_MPI:BOOL=ON \
     -DNetCDF_ROOT=/usr/lib64/mpich \
     -DCMAKE_PREFIX_PATH=/usr/lib64/mpich \
     -DCMAKE_LIBRARY_PATH=/usr/lib64/mpich/lib"
-    # the two in the command below can't be here because the $() isn't evaulated properly
-    
+# the two in the command below can't be here because the $() isn't evaulated properly
+
 
 # Install the mpi enabled netcdf library and build Ngen parallel with it
 RUN dnf install -y netcdf-cxx4-mpich-devel
@@ -195,7 +194,7 @@ RUN chmod a+x /dmod/bin/*
 #                                                             This mess is parsing the version number
 RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | cut -d ':' -f 2 | uniq | xargs)
 
-# now that the only version of numpy is the one that NGen expects, 
+# now that the only version of numpy is the one that NGen expects,
 # we can add the venv to the path so ngen can find it
 ENV PATH="/ngen/.venv/bin:${PATH}"
 
