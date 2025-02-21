@@ -85,7 +85,10 @@ ADD https://api.github.com/repos/${NGEN_REPO}/git/refs/heads/${NGEN_BRANCH} /tmp
 RUN git clone --single-branch --branch $NGEN_BRANCH https://github.com/$NGEN_REPO.git && \
     cd ngen && \
     git submodule update --init --recursive --depth 1
-
+# Patch in the performance_update pending PR
+ADD https://patch-diff.githubusercontent.com/raw/CIROH-UA/ngen/pull/7.patch /ngen/updates.patch
+WORKDIR /ngen/ngen
+RUN git apply /ngen/updates.patch
 
 
 FROM ngen_clone AS ngen_build
@@ -133,13 +136,14 @@ RUN cmake -G Ninja -B cmake_build_parallel -S . ${COMMON_BUILD_ARGS} ${MPI_BUILD
 
 FROM ngen_build AS restructure_files
 # Setup final directories and permissions
-RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin && \
+RUN mkdir -p /dmod/datasets /dmod/datasets/static /dmod/shared_libs /dmod/bin /dmod/utils/ && \
     shopt -s globstar && \
     cp -a ./extern/**/cmake_build/*.so* /dmod/shared_libs/. || true && \
     cp -a ./extern/noah-owp-modular/**/*.TBL /dmod/datasets/static && \
     cp -a ./cmake_build_parallel/ngen /dmod/bin/ngen-parallel || true && \
     cp -a ./cmake_build_serial/ngen /dmod/bin/ngen-serial || true && \
     cp -a ./cmake_build_parallel/partitionGenerator /dmod/bin/partitionGenerator || true && \
+    cp -ar ./utilities/* /dmod/utils/ && \
     cd /dmod/bin && \
     (stat ngen-parallel && ln -s ngen-parallel ngen) || (stat ngen-serial && ln -s ngen-serial ngen)
 
