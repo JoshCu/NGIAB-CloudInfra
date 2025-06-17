@@ -21,7 +21,7 @@ RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
 RUN dnf install -y epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y \
-    sudo gcc gcc-c++ make cmake ninja-build tar git gcc-gfortran libgfortran sqlite sqlite-devel \
+    sudo gcc clang llvm lld libomp-devel make cmake ninja-build tar git gcc-gfortran libgfortran sqlite sqlite-devel \
     python3 python3-devel python3-pip \
     expat-devel flex bison udunits2-devel zlib-devel \
     wget mpich-devel hdf5-devel netcdf-devel \
@@ -30,11 +30,11 @@ RUN dnf install -y epel-release && \
 
 
 FROM build_base AS boost_build
-RUN wget https://archives.boost.io/release/1.79.0/source/boost_1_79_0.tar.gz
-RUN tar -xzf boost_1_79_0.tar.gz
-WORKDIR /boost_1_79_0
-RUN ./bootstrap.sh && ./b2 && ./b2 headers
-ENV BOOST_ROOT=/boost_1_79_0
+RUN wget https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz
+RUN tar -xzf boost_1_82_0.tar.gz
+WORKDIR /boost_1_82_0
+RUN ./bootstrap.sh && ./b2 headers
+ENV BOOST_ROOT=/boost_1_82_0
 
 
 
@@ -95,6 +95,7 @@ WORKDIR /ngen/ngen
 RUN echo $(git remote get-url origin | sed 's/\.git$//' | awk '{print $0 "/tree/" }' | tr -d '\n' && git rev-parse HEAD) >> /tmp/ngen_url
 
 # Define common build arguments
+# Define common build arguments with Clang optimizations for ngen
 ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_NETCDF:BOOL=ON \
     -DNGEN_WITH_BMI_C:BOOL=ON \
@@ -107,9 +108,10 @@ ARG COMMON_BUILD_ARGS="-DNGEN_WITH_EXTERN_ALL=ON \
     -DNGEN_WITH_TESTS:BOOL=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=. \
-    -DCMAKE_CXX_FLAGS='-fuse-ld=lld'"
-# lld is the linker, it's faster than the default
-
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_C_FLAGS='-O3' \
+    -DCMAKE_CXX_FLAGS='-O3'"
 
 # Build Ngen serial
 RUN cmake -G Ninja -B cmake_build_serial -S . ${COMMON_BUILD_ARGS} -DNGEN_WITH_MPI:BOOL=OFF && \
@@ -167,19 +169,24 @@ WORKDIR /ngen
 
 # Copy necessary files from build stages
 COPY  HelloNGEN.sh /ngen/HelloNGEN.sh
-COPY --from=restructure_files /dmod /dmod
-COPY --from=troute_build /ngen/t-route/src/troute-*/dist/*.whl /tmp/
+COPY --from=troute_build /ngen/t-route/src/troute-*/dist/*.whl /temp/
 
-RUN ln -s /dmod/bin/ngen /usr/local/bin/ngen
 
 ENV UV_INSTALL_DIR=/root/.cargo/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+RUN dnf install -y clang make
+RUN dnf install -y python3 python3-pip python3-devel
+
 RUN uv self update && uv venv && \
-    uv pip install --no-cache-dir /tmp/*.whl netCDF4==1.6.3
+    uv pip install --no-cache-dir /temp/*.whl netCDF4==1.6.3
 # Clean up some stuff, this doesn't make the image any smaller
-RUN rm -rf /tmp/*.whl
+RUN rm -rf /temp/*.whl
 # DONT ADD THE VENV TO THE PATH YET
+
+COPY --from=restructure_files /dmod /dmod
+RUN ln -s /dmod/bin/ngen /usr/local/bin/ngen
 
 # Set up library path
 RUN echo "/dmod/shared_libs/" >> /etc/ld.so.conf.d/ngen.conf && ldconfig -v
@@ -196,14 +203,19 @@ RUN uv pip install numpy==$(/dmod/bin/ngen --info | grep -e 'NumPy Version: ' | 
 # we can add the venv to the path so ngen can find it
 ENV PATH="/ngen/.venv/bin:${PATH}"
 
-# Install lstm - the extra index url installs cpu-only pytorch which is ~6gb smaller
-COPY --from=ngen_clone /ngen/ngen/extern/lstm/lstm /ngen/ngen/extern/lstm
-RUN uv pip install --no-cache-dir /ngen/ngen/extern/lstm --extra-index-url https://download.pytorch.org/whl/cpu
+# # Install lstm - the extra index url installs cpu-only pytorch which is ~6gb smaller
+# COPY --from=ngen_clone /ngen/ngen/extern/lstm/lstm /ngen/ngen/extern/lstm
+# RUN uv pip install --no-cache-dir /ngen/ngen/extern/lstm --extra-index-url https://download.pytorch.org/whl/cpu
 
 ## add some metadata to the image
-COPY --from=troute_build /tmp/troute_url /ngen/troute_url
-COPY --from=ngen_build /tmp/ngen_url /ngen/ngen_url
+#COPY --from=troute_build /tmp/troute_url /ngen/troute_url
+#COPY --from=ngen_build /tmp/ngen_url /ngen/ngen_url
 
 RUN echo "export PS1='\u\[\033[01;32m\]@ngiab_dev\[\033[00m\]:\[\033[01;35m\]\W\[\033[00m\]\$ '" >> ~/.bashrc
 
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+#ENV CC=/usr/bin/clang
+#RUN cargo install hyperfine
+COPY route_rs_cal /ngen/ngen/temp
 ENTRYPOINT ["./HelloNGEN.sh"]
