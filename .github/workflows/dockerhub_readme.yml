@@ -4,6 +4,13 @@ on:
   push:
     paths:
       - 'README.md'
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
       - name: Update Docker Hub Description
         uses: peter-evans/dockerhub-description@v4
         with:
