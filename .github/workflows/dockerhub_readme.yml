@@ -2,7 +2,8 @@ name: Update Dockerhub Image Description
 
 on:
   push:
-      branches: [ main ]
+    branches:
+      - main
     paths:
       - 'README.md'
 jobs:
