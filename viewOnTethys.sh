@@ -55,7 +55,7 @@ _check_and_read_config() {
             _check_if_data_folder_exits
             # Save the new path to the config file
             echo "$DATA_FOLDER_PATH" > "$CONFIG_FILE"
-            echo -e "The Directory you've given is:\n$DATA_FOLDER_PATH\n${Color_Off}"   
+            echo -e "The Directory you've given is:\n$DATA_FOLDER_PATH\n${Color_Off}"
         else
             echo -e "Invalid input. Exiting.\n${Color_Off}" >&2
             return 1
@@ -76,7 +76,7 @@ _execute_command() {
 
 _tear_down(){
     _tear_down_tethys
-    docker network rm $DOCKER_NETWORK > /dev/null 2>&1
+    podman network rm $DOCKER_NETWORK > /dev/null 2>&1
 }
 
 _run_containers(){
@@ -93,7 +93,7 @@ _wait_container() {
 
     while true; do
         # Update the health status
-        container_health_status=$(docker inspect -f '{{.State.Health.Status}}' "$container_name" 2>/dev/null)
+        container_health_status=$(podman inspect -f '{{.State.Health.Status}}' "$container_name" 2>/dev/null)
 
         if [ $? -ne 0 ]; then
             echo -e "${BRed}Failed to get health status for container $container_name. Ensure the container exists and has a health check.\n${Color_Off}" >&2
@@ -141,12 +141,12 @@ handle_sigint() {
 check_last_path() {
     if [[ -z "$1" ]]; then
         _check_and_read_config "$CONFIG_FILE"
-     
+
     else
         DATA_FOLDER_PATH="$1"
     fi
     # Finding files
-    
+
     HYDRO_FABRIC=$(find "$DATA_FOLDER_PATH/config" -iname "*.gpkg")
     CATCHMENT_FILE=$(find "$DATA_FOLDER_PATH/config" -iname "catchments.geojson")
     NEXUS_FILE=$(find "$DATA_FOLDER_PATH/config" -iname "nexus.geojson")
@@ -163,14 +163,14 @@ _get_filename() {
 ###############TETHYS FUNCTIONS#################
 ################################################
 
-#create the docker network to communicate between tethys and geoserver
+#create the podman network to communicate between tethys and geoserver
 _create_tethys_docker_network(){
-    _execute_command docker network create -d bridge tethys-network > /dev/null 2>&1
+    _execute_command podman network create -d bridge tethys-network > /dev/null 2>&1
 }
 
 # Link the data to the app workspace
 _link_data_to_app_workspace(){
-    _execute_command docker exec -it $TETHYS_CONTAINER_NAME sh -c \
+    _execute_command podman exec -it $TETHYS_CONTAINER_NAME sh -c \
         "mkdir -p $APP_WORKSPACE_PATH && \
         ln -s $TETHYS_PERSIST_PATH/ngen-data $APP_WORKSPACE_PATH/ngen-data"
 }
@@ -178,17 +178,17 @@ _link_data_to_app_workspace(){
 
 _check_for_existing_tethys_image() {
     echo -e "${BYellow}Select an option (type a number): ${Color_Off}\n"
-    options=("Run Tethys using existing local docker image" "Run Tethys after updating to latest docker image" "Exit")
+    options=("Run Tethys using existing local podman image" "Run Tethys after updating to latest podman image" "Exit")
     select option in "${options[@]}"; do
         case $option in
-            "Run Tethys using existing local docker image")
+            "Run Tethys using existing local podman image")
                 echo -e "${BGreen}Using local image of the Tethys platform\n${Color_Off}"
                 return 0
                 ;;
-            "Run Tethys after updating to latest docker image")
+            "Run Tethys after updating to latest podman image")
                 echo -e "${BGreen}Pulling container...${Color_Off}\n"
-                if ! docker pull "$TETHYS_IMAGE_NAME"; then
-                    echo -e "${BRed}Failed to pull Docker image: $TETHYS_IMAGE_NAME\n${Color_Off}" >&2
+                if ! podman pull "docker://$TETHYS_IMAGE_NAME"; then
+                    echo -e "${BRed}Failed to pull Docker image: docker://$TETHYS_IMAGE_NAME\n${Color_Off}" >&2
                     return 1
                 fi
                 return 0
@@ -207,14 +207,14 @@ _check_for_existing_tethys_image() {
 
 
 _tear_down_tethys(){
-    if [ "$(docker ps -aq -f name=$TETHYS_CONTAINER_NAME)" ]; then
-        docker stop $TETHYS_CONTAINER_NAME > /dev/null 2>&1
+    if [ "$(podman ps -aq -f name=$TETHYS_CONTAINER_NAME)" ]; then
+        podman stop $TETHYS_CONTAINER_NAME > /dev/null 2>&1
     fi
 }
 
 
 _run_tethys(){
-    _execute_command docker run --rm -it -d \
+    _execute_command podman run --rm -it -d \
     -v "$DATA_FOLDER_PATH:$TETHYS_PERSIST_PATH/ngen-data" \
     -p 80:80 \
     --platform $PLATFORM \
@@ -223,7 +223,7 @@ _run_tethys(){
     --env MEDIA_ROOT="$TETHYS_PERSIST_PATH/media" \
     --env MEDIA_URL="/media/" \
     --env SKIP_DB_SETUP=$SKIP_DB_SETUP \
-    $TETHYS_IMAGE_NAME \
+    docker://$TETHYS_IMAGE_NAME \
     > /dev/null 2>&1
 }
 
@@ -232,7 +232,7 @@ create_tethys_portal(){
     while true; do
         echo -e "${BYellow}Visualize outputs using the Tethys Platform (https://www.tethysplatform.org/)? (Y/n, default: n):${Color_Off}"
         read -r visualization_choice
-        
+
         # Default to 'n' if input is empty
         if [[ -z "$visualization_choice" ]]; then
             visualization_choice="n"
@@ -245,7 +245,7 @@ create_tethys_portal(){
             echo -e "${BRed}Invalid choice. Please enter 'y' for yes, 'n' for no, or press Enter for default (no).${Color_Off}"
         fi
     done
-    
+
     # Execute the command
     if [[ "$visualization_choice" =~ ^[Yy]$ ]]; then
         echo -e "${BGreen}Setting up Tethys Portal image...${Color_Off}"

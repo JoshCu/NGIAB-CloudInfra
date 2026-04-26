@@ -5,5 +5,5 @@ tar -xf .\AWI_16_2863657_007.tar.gz
 rm .\AWI_16_2863657_007.tar.gz
 cd .\AWI_16_2863657_007\
 Write-Host "$(Get-Date) Running NextGen National Water Model Framework Package AWI_16_2863657_007.tar.gz"
-docker run --rm -it -v .:/ngen/ngen/data awiciroh/ciroh-ngen-image:latest /ngen/ngen/data auto
+podman run --rm -it -v .:/ngen/ngen/data awiciroh/ciroh-ngen-image:latest /ngen/ngen/data auto
 Write-Host "Finished at $(Get-Date)"

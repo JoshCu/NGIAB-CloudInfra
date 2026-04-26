@@ -153,7 +153,7 @@ find_files "$HOST_DATA_PATH" "realization" "realization.json" "$UGreen"
 
 # Detect Arch and Docker
 echo -e "\nDetected ISA = $(uname -a)"
-if docker --version ; then
+if podman --version ; then
     echo "Docker found"
 else
     echo "Docker not found"
@@ -163,16 +163,16 @@ IMAGE_NAME=awiciroh/ciroh-ngen-image:latest
 
 # Model run options
 echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
-options=("Run NextGen using existing local docker image" "Run NextGen after updating to latest docker image" "Exit")
+options=("Run NextGen using existing local podman image" "Run NextGen after updating to latest podman image" "Exit")
 select option in "${options[@]}"; do
     case $option in
-        "Run NextGen using existing local docker image")
+        "Run NextGen using existing local podman image")
             echo "running the model"
             break
             ;;
-        "Run NextGen after updating to latest docker image")
+        "Run NextGen after updating to latest podman image")
             echo "pulling container and running the model"
-            docker pull $IMAGE_NAME
+            podman pull docker://$IMAGE_NAME
             break
             ;;
         Exit)
@@ -185,9 +185,9 @@ select option in "${options[@]}"; do
 done
 
 
-echo -e "\nRunning NextGen docker container..."
+echo -e "\nRunning NextGen podman container..."
 echo -e "Mounting local host directory $HOST_DATA_PATH to /ngen/ngen/data within the container."
-docker run --rm -it -v "$HOST_DATA_PATH:/ngen/ngen/data" "$IMAGE_NAME" /ngen/ngen/data/
+podman run --rm -it -v "$HOST_DATA_PATH:/ngen/ngen/data" "docker://$IMAGE_NAME" /ngen/ngen/data/
 
 # Final output count
 Final_Outputs_Count=$(find "$HOST_DATA_PATH/outputs/" -type f | wc -l)
@@ -226,16 +226,16 @@ if [[ "$run_teehr_choice" == [Yy]* ]]; then
         teehr_image_tag="latest"
     fi
     echo -e "${UYellow}Select an option (type a number): ${Color_Off}"
-    options=("Run TEEHR using existing local docker image" "Run TEEHR after updating to latest docker image" "Exit")
+    options=("Run TEEHR using existing local podman image" "Run TEEHR after updating to latest podman image" "Exit")
     select option in "${options[@]}"; do
         case $option in
-            "Run TEEHR using existing local docker image")
+            "Run TEEHR using existing local podman image")
                 echo "running the TEEHR evaluation"
                 break
                 ;;
-            "Run TEEHR after updating to latest docker image")
+            "Run TEEHR after updating to latest podman image")
                 echo "pulling container and running the TEEHR evaluation"
-                docker pull $IMAGE_NAME:$teehr_image_tag
+                podman pull docker://$IMAGE_NAME:$teehr_image_tag
                 break
                 ;;
             Exit)
@@ -247,7 +247,7 @@ if [[ "$run_teehr_choice" == [Yy]* ]]; then
         esac
     done
 
-    docker run -v "$HOST_DATA_PATH:/app/data" "$IMAGE_NAME:$teehr_image_tag"
+    podman run -v "$HOST_DATA_PATH:/app/data" "docker://$IMAGE_NAME:$teehr_image_tag"
     echo -e "${GREEN}TEEHR evaluation complete.${RESET}\n"
 else
     echo -e "${CYAN}Skipping TEEHR evaluation step.${RESET}\n"
